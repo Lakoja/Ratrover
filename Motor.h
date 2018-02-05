@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#ifndef __MOTOR_H__
+#define __MOTOR_H__
+
 #include <math.h>
 
 const int MOTOR_R1 = 32;
@@ -107,3 +110,4 @@ public:
   }
 };
 
+#endif

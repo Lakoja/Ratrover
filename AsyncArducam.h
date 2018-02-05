@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#ifndef __ASYNC_ARDUCAM_H__
+#define __ASYNC_ARDUCAM_H__
  
 #include <ArduCAM.h>
 #include <Wire.h>
@@ -203,3 +206,5 @@ public:
     Serial.print("Z"+String(time4-time3)+" ");
   }
 };
+
+#endif
