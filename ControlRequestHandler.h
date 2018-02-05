@@ -25,6 +25,8 @@ class ControlRequestHandler
 private:
   WiFiServer webServer; // TODO why does this work; but not with (80) ...?
   WiFiClient client;
+  uint32_t clientConnectTime;
+  uint16_t imageCounter;
 
 public:
   void setup()
@@ -34,51 +36,50 @@ public:
 
   void drive(AsyncArducam* aCam)
   {
-    client = webServer.accept();
-
+    // Currently two hops: first connect, parse and response header; then one image each time
+    
     if (client && client.connected()) {
-      Serial.print("Client connected. IP address: ");
-      Serial.println(client.remoteIP());
+      client.println("--frame");
 
-      int total_time = millis();
+      //client.setNoDelay(true);
 
-      String requested = parseRequest();
-      Serial.println("Requested "+requested);
+      int time1 = millis();
+      aCam->transferCapture(client);
+      int time2 = millis();
 
-      // TODO check for requested (fail on favicon for example)
+      Serial.print("T"+String(time2-time1)+" ");
 
-      client.println("HTTP/1.1 200 OK");
-      client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
-      client.println();
-  
-      uint16_t imageCounter = 0;
-      while(client.connected()) {
-        
-        client.println("--frame");
-  
-        //client.setNoDelay(true);
-  
-        int time1 = millis();
-        aCam->transferCapture(client);
-        int time2 = millis();
-  
-        Serial.print("T"+String(time2-time1)+" ");
-  
-        delay(1); // why is this enough for "wait for all data being sent"?
-        // TODO vs setNoDelay()?
-  
-        if (imageCounter++ > 59) {
-          client.stop();
-          break;
-        }
-        
-        aCam->drive();
+      // TODO vs setNoDelay()?
+
+      if (imageCounter++ > 59) {
+        delay(1); // TODO why and if is this enough for "wait for all data being sent"?
+        client.stop();
+
+        Serial.println("Stopped after "+String(imageCounter)+" images");
+        Serial.println("Total server side time: "+String(millis() - clientConnectTime)+"ms");
       }
+    } else {
+      client = webServer.accept();
+
+      if (client && client.connected()) {
+        clientConnectTime = millis();
+        imageCounter = 0;
+        
+        Serial.print("Client connected. IP address: ");
+        Serial.println(client.remoteIP());
+        String requested = parseRequest();
+        Serial.println("Requested "+requested);
   
-      Serial.println("Stopped after "+String(imageCounter)+" images");
-      Serial.println("Total server side time: "+String(millis() - total_time)+"ms");
+        // TODO check for requested (fail on favicon for example)
+
+        client.println("HTTP/1.1 200 OK");
+        client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
+        client.println();
+      }
     }
   }
+
+  // TODO use client.setTimeout?
 
 private:
   String parseRequest()
