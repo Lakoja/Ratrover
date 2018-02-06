@@ -19,49 +19,20 @@
 
 #include <math.h>
 
+// first pin must be the one for "forward"
 const int MOTOR_R1 = 32;
 const int MOTOR_R2 = 33;
-const int MOTOR_L1 = 25;
-const int MOTOR_L2 = 26;
+const int MOTOR_L1 = 26;
+const int MOTOR_L2 = 25;
 
 class Motor
 {
 private:
   uint32_t systemStart;
-  bool motorROn = false;
-  bool motorLOn = false;
+  float motorRSpeed = 0;
+  float motorLSpeed = 0;
   uint8_t precision;
   uint8_t maxSpeedInt;
-
-  void outputPin(int num)
-  {
-    digitalWrite(num, LOW);
-    pinMode(num, OUTPUT);
-  }
-
-  void switchMotorR(float speed)
-  {
-    ledcWrite(0, round(speed * maxSpeedInt));
-    ledcWrite(1, 0);
-
-    if (speed != 0) {
-      motorROn = true;
-    } else {
-      motorROn = false;
-    }
-  }
-
-  void switchMotorL(float speed)
-  {
-    ledcWrite(2, round(speed * maxSpeedInt));
-    ledcWrite(3, 0);
-
-    if (speed != 0) {
-      motorLOn = true;
-    } else {
-      motorLOn = false;
-    }
-  }
 
 public:
   void setup()
@@ -95,18 +66,57 @@ public:
   {
     uint32_t passed = millis() - systemStart;
     if (passed >= 1000 && passed < 4000) {
-      if (!motorLOn) {
+      if (motorLSpeed == 0) {
         Serial.println("Motors on");
-        switchMotorR(0.6);
-        switchMotorL(1);
       }
+        switchMotorR(0.5);
+        switchMotorL(0.6);
+    } else if (passed >= 4000 && passed < 7000) {
+        switchMotorR(-0.6);
+        switchMotorL(-0.4);
     } else {
-      if (motorLOn) {
+      if (motorLSpeed != 0) {
         Serial.println("Motors off");
-        switchMotorR(0);
-        switchMotorL(0);
       }
+      
+      switchMotorR(0);
+      switchMotorL(0);
     }
+  }
+
+private:
+  void outputPin(int num)
+  {
+    digitalWrite(num, LOW);
+    pinMode(num, OUTPUT);
+  }
+
+  void switchMotorR(float speed)
+  {
+    if (speed != motorRSpeed) {
+      switchMotor(speed, 0, 1);
+      motorRSpeed = speed;
+    }
+  }
+
+  void switchMotorL(float speed)
+  {
+    if (speed != motorLSpeed) {
+      switchMotor(speed, 2, 3);
+      motorLSpeed = speed;
+    }
+  }
+
+  bool switchMotor(float speed, uint8_t channelForward, uint8_t channelReverse)
+  {
+    uint8_t speedInt = round(abs(speed) * maxSpeedInt);
+    uint8_t chan1Speed = speed >= 0 ? speedInt : 0;
+    uint8_t chan2Speed = speed < 0 ? speedInt : 0;
+
+    //Serial.println("Make your speed "+String(chan1Speed)+" "+String(chan2Speed));
+    
+    ledcWrite(channelForward, chan1Speed);
+    ledcWrite(channelReverse, chan2Speed);
   }
 };
 
