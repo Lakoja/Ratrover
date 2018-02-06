@@ -16,8 +16,8 @@
  
 #include <WiFi.h>
 
-#include "ControlRequestHandler.h"
 #include "AsyncArducam.h"
+#include "ControlRequestHandler.h"
 #include "Motor.h"
 
 const int LED1 = 2;
@@ -25,7 +25,7 @@ const int LED2 = 4;
 const int IRLED2 = 13;
 
 ControlRequestHandler control;
-AsyncArducam aCam;
+AsyncArducam aCam(OV2640);
 Motor motor;
 
 bool setupWifi()
