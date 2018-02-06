@@ -18,6 +18,7 @@
 #define __CONTROL_REQUEST_HANDLER_H__
  
 #include <WiFiServer.h>
+#include "SyncedMemoryBuffer.h"
 #include "AsyncArducam.h"
 
 class ControlRequestHandler
@@ -29,12 +30,12 @@ private:
   uint16_t imageCounter;
 
 public:
-  void setup()
+  void begin()
   {
     webServer.begin(); 
   }
 
-  void drive(AsyncArducam* aCam)
+  void drive(AsyncArducam *aCam, SyncedMemoryBuffer* buffer)
   {
     // Currently two hops: first connect, parse and response header; then one image each time
     
@@ -44,7 +45,7 @@ public:
       //client.setNoDelay(true);
 
       int time1 = millis();
-      aCam->transferCapture(client);
+      aCam->transferCapture(client, buffer);
       int time2 = millis();
 
       Serial.print("T"+String(time2-time1)+" ");
@@ -70,11 +71,15 @@ public:
         String requested = parseRequest();
         Serial.println("Requested "+requested);
   
-        // TODO check for requested (fail on favicon for example)
-
-        client.println("HTTP/1.1 200 OK");
-        client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
-        client.println();
+        if (requested.equals("/")) {
+          client.println("HTTP/1.1 200 OK");
+          client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
+          client.println();
+        } else {
+          client.println("HTTP/1.1 404 Not Found");
+          client.println();
+          client.stop();
+        }
       }
     }
   }

@@ -19,11 +19,13 @@
 #include "AsyncArducam.h"
 #include "ControlRequestHandler.h"
 #include "Motor.h"
+#include "SyncedMemoryBuffer.h"
 
 const int LED1 = 2;
 const int LED2 = 4;
 const int IRLED2 = 13;
 
+SyncedMemoryBuffer buffer;
 ControlRequestHandler control;
 AsyncArducam aCam(OV2640);
 Motor motor;
@@ -72,7 +74,9 @@ void setup()
     while(1);
   }
 
-  control.setup();
+  control.begin();
+
+  buffer.setup();
 
   digitalWrite(LED2, HIGH);
   digitalWrite(IRLED2, HIGH);
@@ -83,8 +87,8 @@ void setup()
 void loop() 
 {
   motor.drive();
-  aCam.drive();
-  control.drive(&aCam);
+  aCam.drive(&buffer);
+  control.drive(&aCam, &buffer);
 
   delay(5);
 }

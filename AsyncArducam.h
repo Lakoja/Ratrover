@@ -23,18 +23,18 @@
 #include "memorysaver.h"
 #include <math.h>
 
+#include "SyncedMemoryBuffer.h"
+
 const int VCS = 5;
 const int VSCK = 18;
 const int VMISO = 19;
 const int VMOSI = 23;
 
 const int16_t OLDER_IS_TOO_OLD = 700;
-const int32_t BUFFER_SIZE = 50000;
 
 class AsyncArducam : public ArduCAM
 {
 private:
-  byte* buffer;
   uint32_t lastCaptureStart = 0;
   bool captureStarted = false;
   bool copyingActive = false;
@@ -43,9 +43,6 @@ private:
 public:
   AsyncArducam(byte model) : ArduCAM(model, VCS)
   {
-    buffer = (byte *)malloc(BUFFER_SIZE);
-    memset(buffer, 0, BUFFER_SIZE);
-    buffer[0] = 0xff;
   }
   
   bool begin(uint8_t size)
@@ -86,7 +83,7 @@ public:
   }
   
   // Call repeatedly (from loop()). Will initiate capturing if last one too old.
-  void drive()
+  void drive(SyncedMemoryBuffer* buffer)
   {
       if (!captureStarted && (lastCaptureStart == 0 || millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
         doCapture();
@@ -97,7 +94,7 @@ public:
         //Serial.print("C" + String(total_time) + " ");
 
         int time1 = millis();
-        copyData();
+        copyData(buffer);
         int time2 = millis();
 
         //Serial.print("M" + String(time2-time1) + " ");
@@ -106,12 +103,12 @@ public:
       }
   }
 
-  void transferCapture(WiFiClient client)
+  void transferCapture(WiFiClient client, SyncedMemoryBuffer* buffer)
   {
     int time1 = millis();
     while (captureStarted) {
       delay(1);
-      drive();
+      drive(buffer);
     }
     doCapture();
     int time2 = millis();
@@ -134,12 +131,14 @@ public:
     //client.println("Refresh: 5");
     //client.println("Connection: close");
     client.println();
+    
+    byte* bufferPointer = buffer->content();
 
     uint32_t written = 0;
     while (written < bufferContent) {
       if (written > 0)
         Serial.print("+");
-      written += client.write(&buffer[0], bufferContent);
+      written += client.write(&bufferPointer[written], bufferContent);
     }
   
     client.println();
@@ -166,7 +165,7 @@ private:
     return !get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK) || copyingActive;
   }
 
-  void copyData()
+  void copyData(SyncedMemoryBuffer* buffer)
   {
     size_t dataLength = read_fifo_length();
     if (dataLength >= 0x07ffff){
@@ -188,12 +187,14 @@ private:
     #endif
 
     bufferContent = 0;
-    buffer[0] = 0xff;
+    byte* bufferPointer = buffer->content();
+    bufferPointer[0] = 0xff;
     size_t dataToCopy = dataLength;
+    uint32_t bufferSize = buffer->size();
     
-    while (dataToCopy > 0 && BUFFER_SIZE - bufferContent > 0) {
-      size_t copyNow = _min(4096, _min(dataToCopy, BUFFER_SIZE - bufferContent));
-      SPI.transferBytes(&buffer[bufferContent], &buffer[bufferContent], copyNow);
+    while (dataToCopy > 0 && bufferSize - bufferContent > 0) {
+      size_t copyNow = _min(4096, _min(dataToCopy, bufferSize - bufferContent));
+      SPI.transferBytes(&bufferPointer[bufferContent], &bufferPointer[bufferContent], copyNow);
       
       dataToCopy -= copyNow;
       bufferContent += copyNow;
