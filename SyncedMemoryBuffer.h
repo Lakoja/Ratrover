@@ -17,35 +17,37 @@
 #ifndef __SYNCED_MEMORY_BUFFER_H__
 #define __SYNCED_MEMORY_BUFFER_H__
 
-const int32_t BUFFER_SIZE = 50000;
+const uint32_t BUFFER_SIZE = 50000;
 
 class SyncedMemoryBuffer
 {
 private:
   byte* buffer;
-  uint32_t bufferSize = 0;
+  uint32_t maxBufferSize = 0;
+  uint32_t currentTimestamp = 0;
+  uint32_t currentContentSize = 0;
   SemaphoreHandle_t semaphore;
   
 public:
   SyncedMemoryBuffer()
   {
   }
-
+  
   void setup()
   {
+    // TODO this could be a double buffer (or two buffers) to parallelize transfers
+    
     buffer = (byte *)malloc(BUFFER_SIZE);
-    bufferSize = BUFFER_SIZE;
+    maxBufferSize = BUFFER_SIZE;
     memset(buffer, 0, BUFFER_SIZE);
     buffer[0] = 0xff;
     
     semaphore = xSemaphoreCreateMutex();
-    
-    xSemaphoreTake(semaphore, portMAX_DELAY);
   }
 
-  uint32_t size()
+  uint32_t maxSize()
   {
-    return bufferSize;
+    return maxBufferSize;
   }
 
   bool take()
@@ -53,8 +55,13 @@ public:
     return xSemaphoreTake(semaphore, 0) == pdTRUE;
   }
 
-  void release()
+  void release(uint32_t dataLength = 0)
   {
+    if (dataLength > 0) {
+      currentContentSize = dataLength;
+      currentTimestamp = millis();
+    }
+    
     xSemaphoreGive(semaphore);
   }
 
@@ -64,8 +71,15 @@ public:
     return buffer;
   }
 
-private:
-  
+  uint32_t timestamp()
+  {
+    return currentTimestamp;
+  }
+
+  uint32_t contentSize()
+  {
+    return currentContentSize;
+  }
 };
 
 #endif

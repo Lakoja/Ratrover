@@ -27,14 +27,14 @@ const int IRLED2 = 13;
 
 SyncedMemoryBuffer buffer;
 ControlRequestHandler control;
-AsyncArducam aCam(OV2640);
+AsyncArducam camera(OV2640);
 Motor motor;
 
 bool setupWifi()
 {
   WiFi.mode(WIFI_AP);
   bool b1 = WiFi.softAPConfig(IPAddress(192,168,151,1), IPAddress(192,168,151,254), IPAddress(255,255,255,0));
-  bool b2 = WiFi.softAP("Roversnail");
+  bool b2 = WiFi.softAP("Roversnail", NULL, 8); // TODO scan continuum?
   delay(100);
 
   if (b1 && b2) {
@@ -64,7 +64,7 @@ void setup()
   outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  if (!aCam.begin(OV2640_800x600)) {  // OV2640_320x240, OV2640_1600x1200, 
+  if (!camera.begin(OV2640_800x600)) {  // OV2640_320x240, OV2640_1600x1200, 
     while(1);
   }
 
@@ -86,9 +86,14 @@ void setup()
 
 void loop() 
 {
+  uint32_t loopStartTime = micros();
+  
   motor.drive();
-  aCam.drive(&buffer);
-  control.drive(&aCam, &buffer);
+  camera.drive(&buffer);
+  control.drive(&buffer);
 
-  delay(5);
+  int32_t sleepNow = 1000 - (micros() - loopStartTime);
+  
+  if (sleepNow >= 0)
+    delayMicroseconds(sleepNow);
 }

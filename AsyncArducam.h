@@ -35,10 +35,15 @@ const int16_t OLDER_IS_TOO_OLD = 700;
 class AsyncArducam : public ArduCAM
 {
 private:
+  bool cameraReady = false;
   uint32_t lastCaptureStart = 0;
+  uint32_t lastCopyStart = 0;
   bool captureStarted = false;
-  bool copyingActive = false;
-  int32_t bufferContent = 0;
+  bool copyActive = false;
+  bool hasCopySemaphore = false;
+  uint32_t currentDataInCamera = 0;
+  uint32_t currentlyCopied = 0;
+  uint8_t ffsOnLine = 0;
   
 public:
   AsyncArducam(byte model) : ArduCAM(model, VCS)
@@ -79,30 +84,33 @@ public:
     OV2640_set_JPEG_size(size);
     clear_fifo_flag();
 
+    cameraReady = true;
+
     return true;
   }
   
-  // Call repeatedly (from loop()). Will initiate capturing if last one too old.
+  // Call repeatedly (from loop()). Will initiate capturing if last image too old. Will copy. Will not block
   void drive(SyncedMemoryBuffer* buffer)
   {
-      if (!captureStarted && (lastCaptureStart == 0 || millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
-        doCapture();
-      }
+      if (!cameraReady)
+        return;
 
       if (captureStarted && !isCaptureActive()) {
         int total_time = millis() - lastCaptureStart;
         //Serial.print("C" + String(total_time) + " ");
-
-        int time1 = millis();
-        copyData(buffer);
-        int time2 = millis();
-
-        //Serial.print("M" + String(time2-time1) + " ");
         
-        captureStarted = false;
+        initiateCopy();
       }
+      
+      if (copyActive)
+        copyData(buffer);
+      else if (!captureStarted && (lastCaptureStart == 0 || millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
+        initiateCapture();
+      }
+      // TODO consider a client connected vs OLDER_IS_TOO_OLD
   }
-
+  
+/*
   void transferCapture(WiFiClient client, SyncedMemoryBuffer* buffer)
   {
     int time1 = millis();
@@ -145,10 +153,10 @@ public:
 
     int time4 = millis();
     Serial.print("Z"+String(time4-time3)+" ");
-  }
+  }*/
 
 private:
-  void doCapture() 
+  void initiateCapture() 
   {
     if (captureStarted)
       return;
@@ -160,48 +168,93 @@ private:
     start_capture();
   }
 
+  void initiateCopy()
+  {
+    if (copyActive)
+      return;
+      
+    captureStarted = false;
+    copyActive = true;
+
+    currentDataInCamera = 0;
+    currentlyCopied = 0;
+
+    lastCopyStart = millis();
+  }
+
   bool isCaptureActive()
   {
-    return !get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK) || copyingActive;
+    return !get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK);
   }
 
   void copyData(SyncedMemoryBuffer* buffer)
   {
-    size_t dataLength = read_fifo_length();
-    if (dataLength >= 0x07ffff){
-      Serial.println("Over size.");
+    if (!hasCopySemaphore)
+      hasCopySemaphore = buffer->take();
+
+    if (!hasCopySemaphore)
       return;
-    } else if (dataLength == 0 ){
-      Serial.println("Size is 0.");
-      return;
-    }
 
-    copyingActive = true;
-    
-    CS_LOW();
-    set_fifo_burst();
+    // TODO track waiting time
 
-    #if !(defined (ARDUCAM_SHIELD_V2) && defined (OV2640_CAM))
-    // this is true for my OV2640_CAM; discards the one surplus 0-byte at the beginning
-    SPI.transfer(0xFF);
-    #endif
+    uint32_t methodStartTime = micros();
 
-    bufferContent = 0;
-    byte* bufferPointer = buffer->content();
-    bufferPointer[0] = 0xff;
-    size_t dataToCopy = dataLength;
-    uint32_t bufferSize = buffer->size();
-    
-    while (dataToCopy > 0 && bufferSize - bufferContent > 0) {
-      size_t copyNow = _min(4096, _min(dataToCopy, bufferSize - bufferContent));
-      SPI.transferBytes(&bufferPointer[bufferContent], &bufferPointer[bufferContent], copyNow);
+    if (currentDataInCamera == 0) {
+      currentDataInCamera = read_fifo_length();
+
+      if (currentDataInCamera >= 0x07ffff){
+        currentDataInCamera = 0;
+        Serial.println("Camera data length over size.");
+        return;
+      } else if (currentDataInCamera == 0 ){
+        Serial.println("Camera data length is 0.");
+        return;
+      }
+
+      if (currentDataInCamera > buffer->maxSize())
+        Serial.println("Image too big: "+String(currentDataInCamera));
       
-      dataToCopy -= copyNow;
-      bufferContent += copyNow;
+      CS_LOW();
+      set_fifo_burst();
+  
+      #if !(defined (ARDUCAM_SHIELD_V2) && defined (OV2640_CAM))
+      // this is true for my OV2640_CAM; discards the one surplus 0-byte at the beginning
+      SPI.transfer(0xFF);
+      #endif
     }
+    
+    uint32_t maximumToCopy = _min(buffer->maxSize(), currentDataInCamera);
+    while (currentlyCopied < maximumToCopy) {
+      byte* bufferPointer = &((buffer->content())[currentlyCopied]);
+      uint32_t bytesToCopyLeft = maximumToCopy - currentlyCopied;
+      uint16_t copyNow = _min(2048, bytesToCopyLeft);
 
+      SPI.transferBytes(bufferPointer, bufferPointer, copyNow);
+      currentlyCopied += copyNow;
+
+      // NOTE this has the right result (time taken) even for an overflow of micros() ("negative" result)
+      uint16_t passed = micros() - methodStartTime;
+      if (passed >= 1000) {
+        if (passed > 3000)
+          Serial.print("!"+String(passed));
+
+        return; // maintain system responsiveness
+      }
+    }
+    
+    Serial.print('F');
+    ffsOnLine++;
+
+    if (ffsOnLine % 16 == 15)
+      Serial.println();
+
+    //Serial.print("C"+String(millis() - lastCopyStart));
+    
     CS_HIGH();
-    copyingActive = false;
+    currentDataInCamera = 0;
+    buffer->release(maximumToCopy);
+    hasCopySemaphore = false;
+    copyActive = false;
   }
 };
 
