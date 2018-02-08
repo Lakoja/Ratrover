@@ -18,6 +18,7 @@
 
 #include "AsyncArducam.h"
 #include "ImageServer.h"
+#include "ControlServer.h"
 #include "Motor.h"
 #include "SyncedMemoryBuffer.h"
 
@@ -27,6 +28,7 @@ const int IRLED2 = 13;
 
 SyncedMemoryBuffer buffer;
 ImageServer imageServer(81);
+ControlServer controlServer(80);
 AsyncArducam camera(OV2640);
 Motor motor;
 
@@ -74,6 +76,7 @@ void setup()
     while(1);
   }
 
+  controlServer.begin();
   imageServer.begin();
 
   buffer.setup();
@@ -87,7 +90,8 @@ void setup()
 void loop() 
 {
   uint32_t loopStartTime = micros();
-  
+
+  controlServer.drive();
   motor.drive();
   camera.drive(&buffer);
   imageServer.drive(&buffer);

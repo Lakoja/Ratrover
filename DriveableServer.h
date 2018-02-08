@@ -16,12 +16,12 @@
 
 #ifndef __DRIVEABLE_SERVER_H__
 #define __DRIVEABLE_SERVER_H__
- 
+
 #include <WiFiServer.h>
 
 class DriveableServer : public WiFiServer
 {
-private:  
+private:
   bool clientNowConnected = false;
   bool waitForRequest = false;
   String currentLine = "";
@@ -36,7 +36,7 @@ public:
     
   }
 
-  void drive(SyncedMemoryBuffer* buffer)
+  void drive()
   {
     if (!client || !client.connected()) {
       clientNowConnected = false;
@@ -65,10 +65,14 @@ public:
       String requested = parseRequest();
 
       if (requested.length() > 0) {
-         if (shouldAccept(requested)) {
+        waitForRequest = false;
+        
+        if (shouldAccept(requested)) {
           client.println("HTTP/1.1 200 OK");
           client.println("Content-Type: "+contentType(requested));
           client.println();
+
+          Serial.println("Handling "+requested);
 
           startHandling(requested);
         } else {
@@ -114,6 +118,8 @@ private:
     
     uint32_t methodStartTime = micros();
 
+    //Serial.print("P"+String(client.available() > 0));
+
     // TODO simplify time check
     while (client.connected() && micros() - methodStartTime < 2000) {
       if (client.available() == 0)
@@ -134,8 +140,6 @@ private:
             break;
           } else {
             if (currentLine.startsWith("GET ")) {
-              waitForRequest = false;
-              
               return currentLine.substring(4);
             }
             currentLine = "";

@@ -38,7 +38,7 @@ public:
 
   void drive(SyncedMemoryBuffer* buffer)
   {
-    DriveableServer::drive(buffer);
+    DriveableServer::drive();
     
     if (!client || !client.connected())
       return;
@@ -62,7 +62,8 @@ protected:
 
   virtual void startHandling(String requested)
   {
-      transferActive = true;
+    imageCounter = 0;
+    transferActive = true;
   }
 
 private:
@@ -109,6 +110,7 @@ private:
     
     if (currentlyTransferred == currentlyInBuffer) {
       client.println();
+      client.flush();
       imageCounter++;
       lastTransferredTimestamp = buffer->timestamp();
       currentlyInBuffer = 0;
@@ -119,8 +121,7 @@ private:
   
       if (imageCounter++ > 59) {
         transferActive = false;
-        delay(1); // TODO why and if is this enough for "wait for all data being sent"?
-        // TODO this is not enough; at least not for the last image
+        client.flush();
         client.stop();
   
         Serial.println("Stopped after "+String(imageCounter)+" images");

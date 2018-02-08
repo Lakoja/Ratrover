@@ -110,51 +110,6 @@ public:
       // TODO consider a client connected vs OLDER_IS_TOO_OLD
   }
   
-/*
-  void transferCapture(WiFiClient client, SyncedMemoryBuffer* buffer)
-  {
-    int time1 = millis();
-    while (captureStarted) {
-      delay(1);
-      drive(buffer);
-    }
-    doCapture();
-    int time2 = millis();
-
-    if (time2 - time1 > 10) {
-      Serial.print("W" + String(time2-time1) + " ");
-    }
-
-    if (bufferContent == 0) {
-      Serial.println();
-      Serial.println("BUFFER empty!!!");
-      delay(5000);
-    }
-  
-    if (!client.connected()) return;
-
-    int time3 = millis();
-    client.println("Content-Type: image/jpeg");
-    client.println("Content-Length: " + String(bufferContent));
-    //client.println("Refresh: 5");
-    //client.println("Connection: close");
-    client.println();
-    
-    byte* bufferPointer = buffer->content();
-
-    uint32_t written = 0;
-    while (written < bufferContent) {
-      if (written > 0)
-        Serial.print("+");
-      written += client.write(&bufferPointer[written], bufferContent);
-    }
-  
-    client.println();
-
-    int time4 = millis();
-    Serial.print("Z"+String(time4-time3)+" ");
-  }*/
-
 private:
   void initiateCapture() 
   {
@@ -245,7 +200,7 @@ private:
     Serial.print('F');
     ffsOnLine++;
 
-    if (ffsOnLine % 16 == 15)
+    if (ffsOnLine % 32 == 31)
       Serial.println();
 
     //Serial.print("C"+String(millis() - lastCopyStart));
