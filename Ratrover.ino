@@ -17,7 +17,7 @@
 #include <WiFi.h>
 
 #include "AsyncArducam.h"
-#include "ControlRequestHandler.h"
+#include "ImageServer.h"
 #include "Motor.h"
 #include "SyncedMemoryBuffer.h"
 
@@ -26,7 +26,7 @@ const int LED2 = 4;
 const int IRLED2 = 13;
 
 SyncedMemoryBuffer buffer;
-ControlRequestHandler control;
+ImageServer imageServer(81);
 AsyncArducam camera(OV2640);
 Motor motor;
 
@@ -74,7 +74,7 @@ void setup()
     while(1);
   }
 
-  control.begin();
+  imageServer.begin();
 
   buffer.setup();
 
@@ -90,7 +90,7 @@ void loop()
   
   motor.drive();
   camera.drive(&buffer);
-  control.drive(&buffer);
+  imageServer.drive(&buffer);
 
   int32_t sleepNow = 1000 - (micros() - loopStartTime);
   

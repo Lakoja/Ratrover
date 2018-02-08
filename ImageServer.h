@@ -14,134 +14,58 @@
  * limitations under the License.
  */
 
-#ifndef __CONTROL_REQUEST_HANDLER_H__
-#define __CONTROL_REQUEST_HANDLER_H__
+#ifndef __IMAGE_SERVER_H__
+#define __IMAGE_SERVER_H__
  
-#include <WiFiServer.h>
+#include "DriveableServer.h"
 #include "SyncedMemoryBuffer.h"
-#include "AsyncArducam.h"
 
-class ControlRequestHandler
+class ImageServer : public DriveableServer
 {
 private:
-  WiFiServer webServer; // TODO why does this work; but not with (80) ...?
-  WiFiClient client;
-  uint32_t clientConnectTime;
   uint16_t imageCounter;
-  bool waitForRequest = false;
   bool transferActive = false;
   uint32_t currentlyTransferred = 0;
   uint32_t currentlyInBuffer = 0;
   bool hasBufferSemaphore = false;
-  String currentLine = "";
   uint32_t lastTransferredTimestamp = 0;
 
 public:
-  void begin()
+  ImageServer(int port) : DriveableServer(port)
   {
-    webServer.begin(); 
+    
   }
 
   void drive(SyncedMemoryBuffer* buffer)
   {
-    if (!client || !client.connected()) {
-      client = webServer.accept();
-
-      if (client)
-        Serial.print("O");
-    }
-
+    DriveableServer::drive(buffer);
+    
     if (!client || !client.connected())
       return;
 
-    if (!transferActive && !waitForRequest) {
-      clientConnectTime = millis();
-      imageCounter = 0;
-      currentLine = "";
-      
-      waitForRequest = true;
-
-      Serial.print("Client connected. IP address: ");
-      Serial.println(client.remoteIP());
-    }
-
     if (transferActive) {
       transferBuffer(buffer);
-    } else if (waitForRequest) {
-      String requested = parseRequest();
-
-      if (requested.length() > 0) {
-         if (requested.startsWith("/ ")) {
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
-          client.println();
-
-          transferActive = true;
-        } else {
-          Serial.println("Ignoring request "+requested);
-          
-          client.println("HTTP/1.1 404 Not Found");
-          client.println();
-          client.stop();
-        }
-      }
-    }
-    
+    } 
     // TODO use client.setTimeout?
   }
 
-
-private:
-  String parseRequest()
+protected:
+  virtual bool shouldAccept(String requested)
   {
-    if (!waitForRequest)
-      return "";
-
-    if (millis() - clientConnectTime > 2000) {
-      waitForRequest = false;
-      client.stop();
-      Serial.println("Waited too long for a client request. Current line content: "+currentLine);
-    }
-
-    Serial.print("P"+String(client.connected())+String(client.available())+" ");
-    
-    uint32_t methodStartTime = micros();
-
-    // TODO simplify time check
-    while (client.connected() && micros() - methodStartTime < 2000) {
-      if (client.available() == 0)
-        delayMicroseconds(200);
-
-      while (client.available() > 0 && micros() - methodStartTime < 2000) {
-        /* This does not read past the first line and results in a "broken connection" in Firefox
-        String oneRequestLine = client.readStringUntil('\n');
-        Serial.println(oneRequestLine);
-        if (currentLine.length() == 0) {
-          break;
-        }*/
-        
-        char c = client.read();
-        if (c == '\n') {
-          if (currentLine.length() == 0) {
-            Serial.print("B");
-            break;
-          } else {
-            if (currentLine.startsWith("GET ")) {
-              waitForRequest = false;
-              
-              return currentLine.substring(4);
-            }
-            currentLine = "";
-          }
-        } else if (c != '\r') {
-          currentLine += c;
-        }
-      }
-    }
-
-    return "";
+    return requested.startsWith("/ ");
   }
 
+  virtual String contentType(String requested)
+  {
+    return "multipart/x-mixed-replace; boundary=frame";
+  }
+
+  virtual void startHandling(String requested)
+  {
+      transferActive = true;
+  }
+
+private:
   void transferBuffer(SyncedMemoryBuffer* buffer)
   {
     if (!transferActive)
