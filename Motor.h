@@ -31,7 +31,8 @@ private:
   uint32_t systemStart;
   float motorRSpeed = 0;
   float motorLSpeed = 0;
-  uint8_t maxSpeedInt; // TODO also the frequency (can) be connected
+  float deadZoneSpeed = 0.12; // motor doesn't move (too weak) below this
+  uint16_t maxSpeedInt;
   uint32_t motorREndTime;
   uint32_t motorLEndTime;
   float motorRDesireSpeed = 0;
@@ -41,18 +42,22 @@ private:
 public:
   void setup()
   {
-    uint8_t precision = 5;
+    uint8_t precision = 10;
     maxSpeedInt = pow(2, precision) - 1;
     
     outputPin(MOTOR_R1);
     outputPin(MOTOR_R2);
     outputPin(MOTOR_L1);
     outputPin(MOTOR_L2);
-  
-    ledcSetup(0, 16000, precision); // precision bits 8: means we have 0..255 as steps, 4: 0..15
-    ledcSetup(1, 16000, precision);
-    ledcSetup(2, 16000, precision);
-    ledcSetup(3, 16000, precision);
+
+    // NOTE there are groups at work here: The setting for channel 1 also resets the one for 0.
+    // Some documentation would have been fine here generally...
+
+    // 168: sensible frequency for my motors (=rpm)
+    ledcSetup(0, 168, precision); // precision bits 8: means we have 0..255 as steps, 4: 0..15
+    ledcSetup(1, 168, precision);
+    ledcSetup(2, 168, precision);
+    ledcSetup(3, 168, precision);
     ledcAttachPin(MOTOR_R1, 0);
     ledcAttachPin(MOTOR_R2, 1);
     ledcAttachPin(MOTOR_L1, 2);
@@ -65,8 +70,6 @@ public:
 
     systemStart = millis();
   }
-
-  // TODO consider a "dead" zone (motor doesn't do anyhting below 0.5)
 
   void drive()
   {
@@ -137,16 +140,45 @@ private:
     }
   }
 
+  uint16_t outCounter = 0;
+  bool showDebug = false;
+  
   bool switchMotor(float speed, uint8_t channelForward, uint8_t channelReverse)
   {
-    uint8_t speedInt = round(abs(speed) * maxSpeedInt);
-    uint8_t chan1Speed = speed >= 0 ? speedInt : 0;
-    uint8_t chan2Speed = speed < 0 ? speedInt : 0;
+    speed = getNonDeadSpeed(speed);
 
-    //Serial.println("Make your speed "+String(chan1Speed)+" "+String(chan2Speed));
-    
+    if (showDebug) {
+      Serial.print("M");
+      Serial.print(speed, 2);
+      Serial.print(",");
+    }
+
+    uint16_t speedInt = round(abs(speed) * maxSpeedInt);
+    uint16_t chan1Speed = speed >= 0 ? speedInt : 0;
+    uint16_t chan2Speed = speed < 0 ? speedInt : 0;
+
+    if (showDebug) {
+      //Serial.println("Make your speed "+String(chan1Speed)+" "+String(chan2Speed));
+      Serial.print(chan1Speed);
+      Serial.print(" ");
+  
+      if (++outCounter % 20 == 0)
+        Serial.println();
+    }
+
     ledcWrite(channelForward, chan1Speed);
     ledcWrite(channelReverse, chan2Speed);
+  }
+
+  float getNonDeadSpeed(float speed)
+  {
+    float nonDeadSpeed = 0;
+    if (speed != 0) {
+      float sign = speed < 0 ? -1 : +1;
+      nonDeadSpeed = sign * deadZoneSpeed + (1 - deadZoneSpeed) * speed;
+    }
+
+    return nonDeadSpeed;
   }
 };
 

@@ -25,6 +25,7 @@ class ControlServer : public DriveableServer
 private:
   bool isWritingControlPage;
   Motor* motor;
+  int imagePort;
   
 public:
   ControlServer(Motor* m, int port) : DriveableServer(port)
@@ -64,11 +65,11 @@ protected:
   {
     if (requested.startsWith("/left ")) {
       Serial.println("Left requested");
-      motor->requestLeftBurst(3000);
+      motor->requestLeftBurst(5000);
       writeOkAndClose();
     } else if (requested.startsWith("/right ")) {
       Serial.println("Right requested");
-      motor->requestRightBurst();
+      motor->requestRightBurst(5000);
       writeOkAndClose();
     } else {
       isWritingControlPage = true;
@@ -91,11 +92,13 @@ private:
     client.println("<html><head><meta charset=\"utf-8\"/></head><body>");
     client.println("<div style='display: flex;'>");
     client.println("<div data-control='left' style='flex-grow: 1; min-width: 150px; background: lightcyan'>L</div>");
-    client.println("<iframe src='http://192.168.151.1:81' style='width: 800px; height: 600px; border: none'></iframe>");
+    client.println("<iframe src='' style='width: 800px; height: 600px; border: none'></iframe>");
     client.println("<div data-control='right' style='flex-grow: 1; min-width: 150px; background: lightblue'>R</div>");
     client.println("</div>");
     client.println("<script>");
     client.println(
+      "var onePlusPort = (location.port == 0 ? 80 : location.port) + 1;\n"
+      "document.querySelectorAll('iframe')[0].setAttribute('src', 'http://'+window.location.hostname+':'+onePlusPort);\n"
       "var requestActive = false;\n"
       "var controlClickFunc = function(event) {\n"
       "    if (!requestActive) {\n"
