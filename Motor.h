@@ -31,13 +31,17 @@ private:
   uint32_t systemStart;
   float motorRSpeed = 0;
   float motorLSpeed = 0;
-  uint8_t precision;
-  uint8_t maxSpeedInt;
+  uint8_t maxSpeedInt; // TODO also the frequency (can) be connected
+  uint32_t motorREndTime;
+  uint32_t motorLEndTime;
+  float motorRDesireSpeed = 0;
+  float motorLDesireSpeed = 0;
+  uint32_t lastDriveLoopTime = 0;
 
 public:
   void setup()
   {
-    precision = 5;
+    uint8_t precision = 5;
     maxSpeedInt = pow(2, precision) - 1;
     
     outputPin(MOTOR_R1);
@@ -62,26 +66,52 @@ public:
     systemStart = millis();
   }
 
+  // TODO consider a "dead" zone (motor doesn't do anyhting below 0.5)
+
   void drive()
   {
-    uint32_t passed = millis() - systemStart;
-    if (passed >= 1000 && passed < 4000) {
-      if (motorLSpeed == 0) {
-        Serial.println("Motors on");
+    uint32_t now = millis();
+
+    if (lastDriveLoopTime > 0) {
+      uint16_t passed = now - lastDriveLoopTime;
+      float fromASecond = passed / 1000.0f;
+
+      if (now >= motorREndTime) {
+        motorRDesireSpeed = 0;
       }
-        switchMotorR(0.5);
-        switchMotorL(0.6);
-    } else if (passed >= 4000 && passed < 7000) {
-        switchMotorR(-0.6);
-        switchMotorL(-0.4);
-    } else {
-      if (motorLSpeed != 0) {
-        Serial.println("Motors off");
+
+      if (now >= motorLEndTime) {
+        motorLDesireSpeed = 0;
       }
+
+      // adapt the speed slowly (full range in one second)
       
-      switchMotorR(0);
-      switchMotorL(0);
+      if (motorRDesireSpeed != motorRSpeed) {
+        float sign = motorRDesireSpeed - motorRSpeed >= 0 ? +1 : -1;
+        float diff = sign * _min(abs(motorRDesireSpeed - motorRSpeed), fromASecond);
+        switchMotorR(motorRSpeed + diff);
+      }
+
+      if (motorLDesireSpeed != motorLSpeed) {
+        float sign = motorLDesireSpeed - motorLSpeed >= 0 ? +1 : -1;
+        float diff = sign * _min(abs(motorLDesireSpeed - motorLSpeed), fromASecond);
+        switchMotorL(motorLSpeed + diff);
+      }
     }
+
+    lastDriveLoopTime = now;
+  }
+
+  void requestRightBurst(uint16_t durationMillis = 1000)
+  {
+    motorRDesireSpeed = 0.8f;
+    motorREndTime = millis() + durationMillis;
+  }
+
+  void requestLeftBurst(uint16_t durationMillis = 1000)
+  {
+    motorLDesireSpeed = 0.8f;
+    motorLEndTime = millis() + durationMillis;
   }
 
 private:

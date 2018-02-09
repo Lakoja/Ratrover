@@ -18,16 +18,18 @@
 #define __CONTROL_SERVER_H__
  
 #include "DriveableServer.h"
+#include "Motor.h"
 
 class ControlServer : public DriveableServer
 {
 private:
-  bool isHandling;
+  bool isWritingControlPage;
+  Motor* motor;
   
 public:
-  ControlServer(int port) : DriveableServer(port)
+  ControlServer(Motor* m, int port) : DriveableServer(port)
   {
-    
+    motor = m;
   }
 
   void drive()
@@ -39,9 +41,9 @@ public:
     if (micros() - methodStartTime > 1000)
       return;
 
-    if (isHandling) {
+    if (isWritingControlPage) {
       writeControlPage();
-      isHandling = false;
+      isWritingControlPage = false;
     }
   }
   
@@ -60,20 +62,66 @@ protected:
 
   virtual void startHandling(String requested)
   {
-    isHandling = true;
+    if (requested.startsWith("/left ")) {
+      Serial.println("Left requested");
+      motor->requestLeftBurst(3000);
+      writeOkAndClose();
+    } else if (requested.startsWith("/right ")) {
+      Serial.println("Right requested");
+      motor->requestRightBurst();
+      writeOkAndClose();
+    } else {
+      isWritingControlPage = true;
+    }
   }
 
 private:
+  void writeOkAndClose()
+  {
+    client.println("<body>Ok</body>");
+    client.println();
+    client.flush();
+    client.stop();
+  }
+  
   void writeControlPage()
   {
     Serial.println("Writing control page");
     
-    client.println("<html><body>");
-    client.println("<div style=\"display: flex;\">");
-    client.println("<div style=\"width: 10%; background: lightcyan\">L</div>");
-    client.println("<iframe src=\"http://192.168.151.1:81\" style=\"width: 80%; height: 600px; border: none\"></iframe>");
-    client.println("<div style=\"width: 10%; background: lightblue\">R</div>");
+    client.println("<html><head><meta charset=\"utf-8\"/></head><body>");
+    client.println("<div style='display: flex;'>");
+    client.println("<div data-control='left' style='flex-grow: 1; min-width: 150px; background: lightcyan'>L</div>");
+    client.println("<iframe src='http://192.168.151.1:81' style='width: 800px; height: 600px; border: none'></iframe>");
+    client.println("<div data-control='right' style='flex-grow: 1; min-width: 150px; background: lightblue'>R</div>");
     client.println("</div>");
+    client.println("<script>");
+    client.println(
+      "var requestActive = false;\n"
+      "var controlClickFunc = function(event) {\n"
+      "    if (!requestActive) {\n"
+      "        requestActive = true;\n"
+      "        var controlWord = event.target.getAttribute('data-control');\n"
+      "        console.log('Clicked for '+controlWord);\n"
+      "        var xhttp = new XMLHttpRequest();\n"
+      "        xhttp.onreadystatechange = function() {\n"
+      "            if (this.readyState === 4) {\n"
+      "                console.log('Result got '+this.status);\n"
+      "                requestActive = false;\n"
+      "            }\n"
+      "        };\n"
+      "        xhttp.open('GET', '/'+controlWord, true);\n"
+      "        xhttp.send();\n"
+      "    } else {\n"
+      "        console.log('Not sent request');\n"
+      "    }\n"
+      "}\n"
+      "var controls = document.querySelectorAll('[data-control]');\n"
+      "console.log('Found controls '+controls.length);\n"
+      "controls.forEach(function(element) {\n"
+      "    element.addEventListener('click', controlClickFunc);\n"
+      "});\n"
+    );
+    client.println("</script>");
     client.println("</body></html>");
     client.println();
 

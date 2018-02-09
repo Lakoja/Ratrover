@@ -27,10 +27,10 @@ const int LED2 = 4;
 const int IRLED2 = 13;
 
 SyncedMemoryBuffer buffer;
-ImageServer imageServer(81);
-ControlServer controlServer(80);
-AsyncArducam camera(OV2640);
 Motor motor;
+ImageServer imageServer(81);
+ControlServer controlServer(&motor, 80);
+AsyncArducam camera(OV2640);
 
 bool setupWifi()
 {
@@ -40,7 +40,8 @@ bool setupWifi()
   delay(100);
 
   if (b1 && b2) {
-    Serial.println("WiFi AP started");
+    Serial.print("WiFi AP started ");
+    Serial.println(WiFi.softAPIP());
   } else {
     Serial.println("Could not start AP. config: "+String(b1)+" start:"+String(b2));
     return false;
