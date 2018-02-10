@@ -23,12 +23,14 @@
 class ImageServer : public DriveableServer
 {
 private:
-  uint16_t imageCounter;
+  uint16_t imageCounter = 0;
   bool transferActive = false;
   uint32_t currentlyTransferred = 0;
   uint32_t currentlyInBuffer = 0;
   bool hasBufferSemaphore = false;
   uint32_t lastTransferredTimestamp = 0;
+  uint32_t imageStartTime = 0;
+  uint32_t semaphoreWaitStartTime = 0;
 
 public:
   ImageServer(int port) : DriveableServer(port)
@@ -40,7 +42,7 @@ public:
   {
     DriveableServer::drive();
     
-    if (!client || !client.connected())
+    if (!clientConnected())
       return;
 
     if (transferActive) {
@@ -75,11 +77,18 @@ private:
     if (lastTransferredTimestamp == buffer->timestamp())
       return;
 
+    if (semaphoreWaitStartTime == 0)
+      semaphoreWaitStartTime = millis();
+
     if (!hasBufferSemaphore)
       hasBufferSemaphore = buffer->take();
 
     if (!hasBufferSemaphore)
       return;
+
+    if (millis() - semaphoreWaitStartTime > 0)
+      Serial.print("W"+String(millis() - semaphoreWaitStartTime));
+    semaphoreWaitStartTime = 0;
 
     uint32_t methodStartTime = micros();
 
@@ -99,8 +108,10 @@ private:
       client.println("Content-Type: image/jpeg");
       client.println("Content-Length: " + String(currentlyInBuffer));
       client.println();
+      imageStartTime = millis();
     }
 
+    // TODO check for client connected?
     while (currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 2000) {
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
       uint16_t copyNow = _min(1460, currentlyInBuffer - currentlyTransferred);
@@ -112,6 +123,8 @@ private:
       client.println();
       client.flush();
       imageCounter++;
+      Serial.print("T"+String(millis() - imageStartTime));
+      imageStartTime = 0;
       lastTransferredTimestamp = buffer->timestamp();
       currentlyInBuffer = 0;
       currentlyTransferred = 0;
@@ -119,7 +132,7 @@ private:
       buffer->release();
       hasBufferSemaphore = false;
   
-      if (imageCounter++ > 59) {
+      if (imageCounter++ > 1000) {
         transferActive = false;
         client.flush();
         client.stop();

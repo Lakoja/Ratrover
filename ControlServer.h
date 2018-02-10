@@ -53,7 +53,9 @@ protected:
   {
     return requested.startsWith("/ ") 
       || requested.startsWith("/left ")
-      || requested.startsWith("/right ");
+      || requested.startsWith("/right ")
+      || requested.startsWith("/fore ")
+      || requested.startsWith("/back ");
   }
 
   virtual String contentType(String requested)
@@ -65,11 +67,19 @@ protected:
   {
     if (requested.startsWith("/left ")) {
       Serial.println("Left requested");
-      motor->requestLeftBurst(5000);
+      motor->requestLeftBurst();
       writeOkAndClose();
     } else if (requested.startsWith("/right ")) {
       Serial.println("Right requested");
-      motor->requestRightBurst(5000);
+      motor->requestRightBurst();
+      writeOkAndClose();
+    }if (requested.startsWith("/fore ")) {
+      Serial.println("Forward requested");
+      motor->requestForwardBurst();
+      writeOkAndClose();
+    } else if (requested.startsWith("/back ")) {
+      Serial.println("Reverse requested");
+      motor->requestReverseBurst();
       writeOkAndClose();
     } else {
       isWritingControlPage = true;
@@ -90,36 +100,43 @@ private:
     Serial.println("Writing control page");
     
     client.println("<html><head><meta charset=\"utf-8\"/></head><body>");
-    client.println("<div style='display: flex;'>");
-    client.println("<div data-control='left' style='flex-grow: 1; min-width: 150px; background: lightcyan'>L</div>");
-    client.println("<iframe src='' style='width: 800px; height: 600px; border: none'></iframe>");
-    client.println("<div data-control='right' style='flex-grow: 1; min-width: 150px; background: lightblue'>R</div>");
-    client.println("</div>");
+    client.println(
+      "<div style='display: flex;'>\n"
+      "  <div style='display: flex; flex-direction: column; flex-grow: 1'>\n"
+      "    <div data-control='left' style='flex-grow: 1; min-width: 150px; background: lightcyan; justify-content: center'>L</div>\n"
+      "    <div data-control='back' style='flex-grow: 1; min-width: 150px; background: lightcoral'>B</div>\n"
+      "  </div>\n"
+      "  <iframe src='' style='width: 800px; height: 600px; border: none'></iframe>\n"
+      "  <div style='display: flex; flex-direction: column; flex-grow: 1'>\n"
+      "    <div data-control='fore' style='flex-grow: 1; min-width: 150px; background: lightgreen'>F</div>\n"
+      "    <div data-control='right' style='flex-grow: 1; min-width: 150px; background: lightblue'>R</div>\n"
+      "  </div>\n"
+      "</div>\n"
+    );
     client.println("<script>");
     client.println(
       "var onePlusPort = (location.port == 0 ? 80 : location.port) + 1;\n"
       "document.querySelectorAll('iframe')[0].setAttribute('src', 'http://'+window.location.hostname+':'+onePlusPort);\n"
       "var requestActive = false;\n"
       "var controlClickFunc = function(event) {\n"
-      "    if (!requestActive) {\n"
-      "        requestActive = true;\n"
-      "        var controlWord = event.target.getAttribute('data-control');\n"
-      "        console.log('Clicked for '+controlWord);\n"
-      "        var xhttp = new XMLHttpRequest();\n"
-      "        xhttp.onreadystatechange = function() {\n"
-      "            if (this.readyState === 4) {\n"
-      "                console.log('Result got '+this.status);\n"
-      "                requestActive = false;\n"
-      "            }\n"
-      "        };\n"
-      "        xhttp.open('GET', '/'+controlWord, true);\n"
-      "        xhttp.send();\n"
-      "    } else {\n"
-      "        console.log('Not sent request');\n"
-      "    }\n"
+      "  if (!requestActive) {\n"
+      "    requestActive = true;\n"
+      "    var controlWord = event.target.getAttribute('data-control');\n"
+      "    console.log('Clicked for '+controlWord);\n"
+      "    var xhttp = new XMLHttpRequest();\n"
+      "    xhttp.onreadystatechange = function() {\n"
+      "        if (this.readyState === 4) {\n"
+      "            console.log('Result got '+this.status);\n"
+      "            requestActive = false;\n"
+      "        }\n"
+      "    };\n"
+      "    xhttp.open('GET', '/'+controlWord, true);\n"
+      "    xhttp.send();\n"
+      "  } else {\n"
+      "    console.log('Not sent request');\n"
+      "  }\n"
       "}\n"
       "var controls = document.querySelectorAll('[data-control]');\n"
-      "console.log('Found controls '+controls.length);\n"
       "controls.forEach(function(element) {\n"
       "    element.addEventListener('click', controlClickFunc);\n"
       "});\n"

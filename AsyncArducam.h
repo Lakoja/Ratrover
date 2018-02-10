@@ -30,7 +30,7 @@ const int VSCK = 18;
 const int VMISO = 19;
 const int VMOSI = 23;
 
-const int16_t OLDER_IS_TOO_OLD = 700;
+const int16_t OLDER_IS_TOO_OLD = 700; // only effective when idle
 
 class AsyncArducam : public ArduCAM
 {
@@ -44,6 +44,7 @@ private:
   uint32_t currentDataInCamera = 0;
   uint32_t currentlyCopied = 0;
   uint8_t ffsOnLine = 0;
+  uint32_t semaphoreWaitStartTime = 0;
   
 public:
   AsyncArducam(byte model) : ArduCAM(model, VCS)
@@ -90,24 +91,28 @@ public:
   }
   
   // Call repeatedly (from loop()). Will initiate capturing if last image too old. Will copy. Will not block
-  void drive(SyncedMemoryBuffer* buffer)
+  void drive(SyncedMemoryBuffer* buffer, bool clientConnected)
   {
       if (!cameraReady)
         return;
 
       if (captureStarted && !isCaptureActive()) {
         int total_time = millis() - lastCaptureStart;
-        //Serial.print("C" + String(total_time) + " ");
+        Serial.print("C" + String(total_time) + " ");
         
+        ffsOnLine++;
+    
+        if (++ffsOnLine % 20 == 0)
+          Serial.println();
+      
         initiateCopy();
       }
       
       if (copyActive)
         copyData(buffer);
-      else if (!captureStarted && (lastCaptureStart == 0 || millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
+      else if (!captureStarted && (clientConnected || lastCaptureStart == 0 || millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
         initiateCapture();
       }
-      // TODO consider a client connected vs OLDER_IS_TOO_OLD
   }
   
 private:
@@ -144,13 +149,18 @@ private:
 
   void copyData(SyncedMemoryBuffer* buffer)
   {
+    if (semaphoreWaitStartTime == 0)
+      semaphoreWaitStartTime = millis();
+      
     if (!hasCopySemaphore)
       hasCopySemaphore = buffer->take();
 
     if (!hasCopySemaphore)
       return;
 
-    // TODO track waiting time
+    if (millis() - semaphoreWaitStartTime > 10)
+      Serial.print("X"+String(millis() - semaphoreWaitStartTime));
+    semaphoreWaitStartTime = 0;
 
     uint32_t methodStartTime = micros();
 
@@ -197,14 +207,10 @@ private:
       }
     }
     
-    Serial.print('F');
-    ffsOnLine++;
-
-    if (ffsOnLine % 32 == 31)
-      Serial.println();
-
-    //Serial.print("C"+String(millis() - lastCopyStart));
-    
+    //Serial.print('F');
+    //Serial.print("F"+String(millis() - lastCopyStart));
+    // This takes roughly 30ms for 30kb data (spi 8Mhz)
+      
     CS_HIGH();
     currentDataInCamera = 0;
     buffer->release(maximumToCopy);

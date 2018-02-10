@@ -36,6 +36,11 @@ public:
     
   }
 
+  bool clientConnected()
+  {
+    return clientNowConnected;
+  }
+
   void drive()
   {
     if (!client || !client.connected()) {

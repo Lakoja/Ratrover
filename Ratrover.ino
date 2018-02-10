@@ -94,8 +94,8 @@ void loop()
 
   controlServer.drive();
   motor.drive();
-  camera.drive(&buffer);
   imageServer.drive(&buffer);
+  camera.drive(&buffer, imageServer.clientConnected());
 
   int32_t sleepNow = 1000 - (micros() - loopStartTime);
   

@@ -105,16 +105,38 @@ public:
     lastDriveLoopTime = now;
   }
 
-  void requestRightBurst(uint16_t durationMillis = 1000)
+  void requestRightBurst(uint16_t durationMillis = 2000)
   {
-    motorRDesireSpeed = 0.8f;
+    uint32_t now = millis();
+    motorLEndTime = now;
+    motorRDesireSpeed = 0.4f;
     motorREndTime = millis() + durationMillis;
   }
 
-  void requestLeftBurst(uint16_t durationMillis = 1000)
+  void requestLeftBurst(uint16_t durationMillis = 2000)
   {
-    motorLDesireSpeed = 0.8f;
-    motorLEndTime = millis() + durationMillis;
+    uint32_t now = millis();
+    motorREndTime = now;
+    motorLDesireSpeed = 0.4f;
+    motorLEndTime = now + durationMillis;
+  }  
+  
+  void requestForwardBurst(uint16_t durationMillis = 3000)
+  {
+    uint32_t desiredEndTime = millis() + durationMillis;
+    motorRDesireSpeed = 0.4f;
+    motorREndTime = desiredEndTime;
+    motorLDesireSpeed = 0.4f;
+    motorLEndTime = desiredEndTime;
+  }
+
+  void requestReverseBurst(uint16_t durationMillis = 2000)
+  {
+    uint32_t desiredEndTime = millis() + durationMillis;
+    motorRDesireSpeed = -0.4f;
+    motorREndTime = desiredEndTime;
+    motorLDesireSpeed = -0.4f;
+    motorLEndTime = desiredEndTime;
   }
 
 private:
