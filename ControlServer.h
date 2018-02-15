@@ -52,10 +52,11 @@ protected:
   virtual bool shouldAccept(String requested)
   {
     return requested.startsWith("/ ") 
-      || requested.startsWith("/left ")
-      || requested.startsWith("/right ")
-      || requested.startsWith("/fore ")
-      || requested.startsWith("/back ");
+      || requested.startsWith("/left")
+      || requested.startsWith("/right")
+      || requested.startsWith("/fore")
+      || requested.startsWith("/back")
+      || requested.startsWith("/status ");
   }
 
   virtual String contentType(String requested)
@@ -65,21 +66,28 @@ protected:
 
   virtual void startHandling(String requested)
   {
-    if (requested.startsWith("/left ")) {
-      Serial.println("Left requested");
-      motor->requestLeftBurst();
+    if (requested.startsWith("/left")) {
+      float v = parseValue(requested.substring(5));
+      motor->requestRight(v);
+      Serial.println("Left requested "+String(v));
       writeOkAndClose();
-    } else if (requested.startsWith("/right ")) {
-      Serial.println("Right requested");
-      motor->requestRightBurst();
+    } else if (requested.startsWith("/right")) {
+      float v = parseValue(requested.substring(6));
+      motor->requestLeft(v);
+      Serial.println("Right requested "+String(v));
       writeOkAndClose();
-    }if (requested.startsWith("/fore ")) {
-      Serial.println("Forward requested");
-      motor->requestForwardBurst();
+    }if (requested.startsWith("/fore")) {
+      float v = parseValue(requested.substring(5));
+      motor->requestForward(v);
+      Serial.println("Forward requested "+String(v));
       writeOkAndClose();
-    } else if (requested.startsWith("/back ")) {
-      Serial.println("Reverse requested");
-      motor->requestReverseBurst();
+    } else if (requested.startsWith("/back")) {
+      float v = parseValue(requested.substring(5));
+      motor->requestReverse(v);
+      Serial.println("Reverse requested "+String(v));
+      writeOkAndClose();
+    } else if (requested.startsWith("/status ")) {
+      Serial.println("Status requested");
       writeOkAndClose();
     } else {
       isWritingControlPage = true;
@@ -87,6 +95,12 @@ protected:
   }
 
 private:
+  float parseValue(String requestValueString)
+  {
+      long v = requestValueString.toInt();
+      return v / 1000.0f;
+  }
+
   void writeOkAndClose()
   {
     client.println("<body>Ok</body>");
