@@ -18,7 +18,7 @@
 
 #include "AsyncArducam.h"
 #include "ImageServer.h"
-#include "ControlServer.h"
+#include "ContinuousControl.h"
 #include "Motor.h"
 #include "SyncedMemoryBuffer.h"
 
@@ -29,7 +29,7 @@ const int IRLED2 = 13;
 SyncedMemoryBuffer buffer;
 Motor motor;
 ImageServer imageServer(81);
-ControlServer controlServer(&motor, 80);
+ContinuousControl controlServer(&motor, 80);
 AsyncArducam camera(OV2640);
 
 bool setupWifi()

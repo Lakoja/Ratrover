@@ -91,12 +91,16 @@ public:
       
       if (motorRDesireSpeed != motorRSpeed) {
         float sign = motorRDesireSpeed - motorRSpeed >= 0 ? +1 : -1;
+        if (sign < 0)
+          fromASecond /= 2;
         float diff = sign * _min(abs(motorRDesireSpeed - motorRSpeed), fromASecond);
         switchMotorR(motorRSpeed + diff);
       }
 
       if (motorLDesireSpeed != motorLSpeed) {
         float sign = motorLDesireSpeed - motorLSpeed >= 0 ? +1 : -1;
+        if (sign < 0)
+          fromASecond /= 2;
         float diff = sign * _min(abs(motorLDesireSpeed - motorLSpeed), fromASecond);
         switchMotorL(motorLSpeed + diff);
       }
@@ -107,35 +111,57 @@ public:
 
   void requestRightBurst(uint16_t durationMillis = 2000)
   {
-    uint32_t now = millis();
-    motorLEndTime = now;
-    motorRDesireSpeed = 0.4f;
-    motorREndTime = millis() + durationMillis;
+    requestRight(0.4f, durationMillis);
   }
 
+  void requestRight(float value, uint16_t durationMillis = 2000)
+  {
+    // TODO check for value range?
+    
+    uint32_t now = millis();
+    motorLEndTime = now;
+    motorRDesireSpeed = value;
+    motorREndTime = now + durationMillis;
+  }
+  
   void requestLeftBurst(uint16_t durationMillis = 2000)
+  {
+    requestLeft(0.4f, durationMillis);
+  }
+  
+  void requestLeft(float value, uint16_t durationMillis = 2000)
   {
     uint32_t now = millis();
     motorREndTime = now;
-    motorLDesireSpeed = 0.4f;
+    motorLDesireSpeed = value;
     motorLEndTime = now + durationMillis;
   }  
-  
+
   void requestForwardBurst(uint16_t durationMillis = 3000)
   {
+    requestForward(0.4f, durationMillis);
+  }
+  
+  void requestForward(float value, uint16_t durationMillis = 3000)
+  {
     uint32_t desiredEndTime = millis() + durationMillis;
-    motorRDesireSpeed = 0.4f;
+    motorRDesireSpeed = value;
     motorREndTime = desiredEndTime;
-    motorLDesireSpeed = 0.4f;
+    motorLDesireSpeed = value;
     motorLEndTime = desiredEndTime;
   }
 
   void requestReverseBurst(uint16_t durationMillis = 2000)
   {
+    requestReverse(0.4f, durationMillis);
+  }
+  
+  void requestReverse(float value, uint16_t durationMillis = 2000)
+  {
     uint32_t desiredEndTime = millis() + durationMillis;
-    motorRDesireSpeed = -0.4f;
+    motorRDesireSpeed = -value;
     motorREndTime = desiredEndTime;
-    motorLDesireSpeed = -0.4f;
+    motorLDesireSpeed = -value;
     motorLEndTime = desiredEndTime;
   }
 
