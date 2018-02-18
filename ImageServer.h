@@ -42,10 +42,11 @@ public:
   {
     DriveableServer::drive();
     
-    if (!clientConnected())
+    if (!client.connected())
       return;
 
     if (transferActive) {
+      Serial.print("t");
       transferBuffer(buffer);
     } 
     // TODO use client.setTimeout?
@@ -64,8 +65,20 @@ protected:
 
   virtual void startHandling(String requested)
   {
+    Serial.println("Starting handling");
     imageCounter = 0;
+    currentlyInBuffer = 0;
+    currentlyTransferred = 0;
     transferActive = true;
+  }
+
+  virtual void stopHandling()
+  {
+    if (hasBufferSemaphore) {
+      hasBufferSemaphore = false;
+      Serial.println("Stopping connection while having lock!");
+      //buffer->release();
+    }
   }
 
 private:
@@ -110,20 +123,35 @@ private:
       client.println();
       imageStartTime = millis();
     }
-
-    // TODO check for client connected?
-    while (currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 2000) {
+    
+    while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 2000) {
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
       uint16_t copyNow = _min(1460, currentlyInBuffer - currentlyTransferred);
 
       currentlyTransferred += client.write(bufferPointer, copyNow);
     }
     
-    if (currentlyTransferred == currentlyInBuffer) {
+    if (client.connected() && currentlyTransferred == currentlyInBuffer) {
       client.println();
       client.flush();
       imageCounter++;
-      Serial.print("T"+String(millis() - imageStartTime));
+      /*
+      Serial.print("First 5 bytes ");
+      Serial.print((buffer->content())[0], 16);
+      Serial.print((buffer->content())[1], 16);
+      Serial.print((buffer->content())[2], 16);
+      Serial.print((buffer->content())[3], 16);
+      Serial.print((buffer->content())[4], 16);
+      Serial.println();
+      Serial.print("Last 5 bytes ");
+      Serial.print((buffer->content())[currentlyInBuffer-5], 16);
+      Serial.print((buffer->content())[currentlyInBuffer-4], 16);
+      Serial.print((buffer->content())[currentlyInBuffer-3], 16);
+      Serial.print((buffer->content())[currentlyInBuffer-2], 16);
+      Serial.print((buffer->content())[currentlyInBuffer-1], 16);
+      Serial.println();
+      */
+      Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
       imageStartTime = 0;
       lastTransferredTimestamp = buffer->timestamp();
       currentlyInBuffer = 0;
@@ -140,6 +168,10 @@ private:
         Serial.println("Stopped after "+String(imageCounter)+" images");
         Serial.println("Total server side time: "+String(millis() - clientConnectTime)+"ms");
       }
+    } else if (!client.connected()) {
+      Serial.println("Emergency buffer release");
+      buffer->release();
+      hasBufferSemaphore = false;
     }
   }
 };

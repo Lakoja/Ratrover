@@ -38,12 +38,16 @@ public:
 
   bool clientConnected()
   {
-    return clientNowConnected;
+    return client.connected();
   }
-
   void drive()
   {
-    if (!client || !client.connected()) {
+    if (!client.connected()) {
+      if (clientNowConnected) {
+        stopHandling();
+        Serial.println("Disconnected Dr");
+      }
+        
       clientNowConnected = false;
       
       client = accept();
@@ -64,6 +68,7 @@ public:
 
       Serial.print("Client connected. IP address: ");
       Serial.println(client.remoteIP());
+      client.setTimeout(5);
     }
 
     if (waitForRequest) {
@@ -76,8 +81,6 @@ public:
           client.println("HTTP/1.1 200 OK");
           client.println("Content-Type: "+contentType(requested));
           client.println();
-
-          Serial.println("Handling "+requested);
 
           startHandling(requested);
         } else {
@@ -105,6 +108,11 @@ protected:
   }
 
   virtual void startHandling(String requested)
+  {
+    
+  }
+
+  virtual void stopHandling()
   {
     
   }

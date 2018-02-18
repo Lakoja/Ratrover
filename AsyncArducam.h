@@ -45,6 +45,7 @@ private:
   uint32_t currentlyCopied = 0;
   uint8_t ffsOnLine = 0;
   uint32_t semaphoreWaitStartTime = 0;
+  bool writtenSemaphoreError = false;
   
 public:
   AsyncArducam(byte model) : ArduCAM(model, VCS)
@@ -155,12 +156,18 @@ private:
     if (!hasCopySemaphore)
       hasCopySemaphore = buffer->take();
 
-    if (!hasCopySemaphore)
+    if (!hasCopySemaphore) {
+      if (millis() - semaphoreWaitStartTime > 10000 && !writtenSemaphoreError) {
+        Serial.println("XXX Never got semaphore for image copy");
+        writtenSemaphoreError = true;
+      }
       return;
+    }
 
     if (millis() - semaphoreWaitStartTime > 10)
       Serial.print("X"+String(millis() - semaphoreWaitStartTime));
     semaphoreWaitStartTime = 0;
+    writtenSemaphoreError = false;
 
     uint32_t methodStartTime = micros();
 

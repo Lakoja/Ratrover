@@ -39,7 +39,7 @@ public:
   {
     if (!client || !client.connected()) {
       if (clientNowConnected)
-        Serial.println("Disconnected");
+        Serial.println("Disconnected Co");
       
       clientNowConnected = false;
       
