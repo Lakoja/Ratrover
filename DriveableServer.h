@@ -69,6 +69,7 @@ public:
       Serial.print("Client connected. IP address: ");
       Serial.println(client.remoteIP());
       client.setTimeout(5);
+      client.setNoDelay(true); // imperative for at least _some_ throughput with smaller packets (1460)
     }
 
     if (waitForRequest) {

@@ -149,6 +149,9 @@ public:
     motorREndTime = desiredEndTime;
     motorLDesireSpeed = value;
     motorLEndTime = desiredEndTime;
+    if (value == 0) {
+      Serial.println("Stopping");
+    }
   }
 
   void requestReverseBurst(uint16_t durationMillis = 2000)

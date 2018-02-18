@@ -73,25 +73,28 @@ public:
           || requested.startsWith("fore ")
           || requested.startsWith("back ")) {
 
+          float v = -100;
           if (requested.startsWith("left ")) {
-            float v = parseValue(requested.substring(5));
+            v = parseValue(requested.substring(5));
             motor->requestRight(v);
             Serial.println("Left requested "+String(v));
           } else if (requested.startsWith("right ")) {
-            float v = parseValue(requested.substring(6));
+            v = parseValue(requested.substring(6));
             motor->requestLeft(v);
             Serial.println("Right requested "+String(v));
-          }if (requested.startsWith("fore ")) {
-            float v = parseValue(requested.substring(5));
+          } if (requested.startsWith("fore ")) {
+            Serial.println("fore "+requested.substring(5));
+            v = parseValue(requested.substring(5));
             motor->requestForward(v);
             Serial.println("Forward requested "+String(v));
           } else if (requested.startsWith("back ")) {
-            float v = parseValue(requested.substring(5));
+            v = parseValue(requested.substring(5));
             motor->requestReverse(v);
             Serial.println("Reverse requested "+String(v));
           }
-            
-          client.println("OKC");
+
+          Serial.println("OKC for "+requested);
+          client.println("OKC"+String(v));
         } else {
           
           client.println("HUH?");
@@ -99,7 +102,7 @@ public:
       }
     }
     
-    // TODO use client.setTimeout?
+    // TODO use client.setTimeout? Or any transmission tracking?
   }
   
 private:

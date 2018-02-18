@@ -19,6 +19,7 @@
  
 #include "DriveableServer.h"
 #include "SyncedMemoryBuffer.h"
+#include <lwip/sockets.h>
 
 class ImageServer : public DriveableServer
 {
@@ -46,7 +47,7 @@ public:
       return;
 
     if (transferActive) {
-      Serial.print("t");
+      //Serial.print("t");
       transferBuffer(buffer);
     } 
     // TODO use client.setTimeout?
@@ -124,11 +125,17 @@ private:
       imageStartTime = millis();
     }
     
-    while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 2000) {
+    while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 4000) {
+      uint32_t blockStart = micros();
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
       uint16_t copyNow = _min(1460, currentlyInBuffer - currentlyTransferred);
 
       currentlyTransferred += client.write(bufferPointer, copyNow);
+      uint32_t blockEnd = micros();
+
+      if (blockEnd - blockStart > 10000L) {
+        //Serial.print("b"+String((blockEnd - blockStart) / 1000.0f));
+      }
     }
     
     if (client.connected() && currentlyTransferred == currentlyInBuffer) {
@@ -151,7 +158,7 @@ private:
       Serial.print((buffer->content())[currentlyInBuffer-1], 16);
       Serial.println();
       */
-      Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
+      //Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
       imageStartTime = 0;
       lastTransferredTimestamp = buffer->timestamp();
       currentlyInBuffer = 0;
@@ -159,6 +166,34 @@ private:
 
       buffer->release();
       hasBufferSemaphore = false;
+
+/*
+      // check if connection is really alive
+      if (client.connected()) {
+        Serial.print("Hl");
+        uint8_t dummy;
+        int res = recv(client.fd(), &dummy, 0, MSG_DONTWAIT);
+        if (res <= 0) {
+            switch (errno) {
+                case ENOTCONN:
+                case EPIPE:
+                case ECONNRESET:
+                case ECONNREFUSED:
+                case ECONNABORTED:
+                    Serial.print("-");
+                    break;
+                default:
+                    Serial.print("+"+String(errno));
+                    break;
+            }
+        }
+        else {
+            // Should never happen since requested 0 bytes
+            Serial.print("x");
+        }
+      }
+*/
+      
   
       if (imageCounter++ > 1000) {
         transferActive = false;
