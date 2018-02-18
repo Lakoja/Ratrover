@@ -86,14 +86,12 @@ public:
             Serial.println("fore "+requested.substring(5));
             v = parseValue(requested.substring(5));
             motor->requestForward(v);
-            Serial.println("Forward requested "+String(v));
           } else if (requested.startsWith("back ")) {
             v = parseValue(requested.substring(5));
             motor->requestReverse(v);
             Serial.println("Reverse requested "+String(v));
           }
 
-          Serial.println("OKC for "+requested);
           client.println("OKC"+String(v));
         } else {
           

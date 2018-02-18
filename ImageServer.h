@@ -125,10 +125,10 @@ private:
       imageStartTime = millis();
     }
     
-    while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 4000) {
+    while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 10000) {
       uint32_t blockStart = micros();
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
-      uint16_t copyNow = _min(1460, currentlyInBuffer - currentlyTransferred);
+      uint32_t copyNow = currentlyInBuffer - currentlyTransferred;
 
       currentlyTransferred += client.write(bufferPointer, copyNow);
       uint32_t blockEnd = micros();
@@ -140,25 +140,37 @@ private:
     
     if (client.connected() && currentlyTransferred == currentlyInBuffer) {
       client.println();
-      client.flush();
+      //client.flush();
+
+      uint32_t waitForReplyStart = millis();
+
+      while (client.available() < 2) { // NOTE checking for "3" will never return; \n does not count?
+        delayMicroseconds(200);
+        uint16_t passed = millis() - waitForReplyStart;
+        if (passed > 1000) {
+          Serial.println("Waited too long for acknowledgement.");
+          break;
+        }
+      }
+      
+      int data1 = client.read();
+      int data2 = client.read();
+      int data3 = client.read();
+
+      uint16_t passed = millis() - waitForReplyStart;
+      
+      if (data1 == 'o' && data2 == 'k' && data3 == '\n') {
+        //Serial.println("Client acknowledged "+String(passed));
+      } else {
+        Serial.print("Client did not acknowledged "+String(passed)+" ");
+        Serial.print(data1);
+        Serial.print(data2);
+        Serial.print(data3);
+        Serial.println();
+      }
+      
       imageCounter++;
-      /*
-      Serial.print("First 5 bytes ");
-      Serial.print((buffer->content())[0], 16);
-      Serial.print((buffer->content())[1], 16);
-      Serial.print((buffer->content())[2], 16);
-      Serial.print((buffer->content())[3], 16);
-      Serial.print((buffer->content())[4], 16);
-      Serial.println();
-      Serial.print("Last 5 bytes ");
-      Serial.print((buffer->content())[currentlyInBuffer-5], 16);
-      Serial.print((buffer->content())[currentlyInBuffer-4], 16);
-      Serial.print((buffer->content())[currentlyInBuffer-3], 16);
-      Serial.print((buffer->content())[currentlyInBuffer-2], 16);
-      Serial.print((buffer->content())[currentlyInBuffer-1], 16);
-      Serial.println();
-      */
-      //Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
+      Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
       imageStartTime = 0;
       lastTransferredTimestamp = buffer->timestamp();
       currentlyInBuffer = 0;
