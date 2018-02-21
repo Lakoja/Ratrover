@@ -24,6 +24,7 @@
 #include <math.h>
 
 #include "SyncedMemoryBuffer.h"
+#include "Task.h"
 
 const int VCS = 5;
 const int VSCK = 18;
@@ -32,7 +33,7 @@ const int VMOSI = 23;
 
 const int16_t OLDER_IS_TOO_OLD = 600; // only effective when idle; + capture time
 
-class AsyncArducam : public ArduCAM
+class AsyncArducam : public ArduCAM, public Task
 {
 private:
   bool cameraReady = false;
@@ -47,14 +48,18 @@ private:
   uint8_t ffsOnLine = 0;
   uint32_t semaphoreWaitStartTime = 0;
   bool writtenSemaphoreError = false;
+  bool imageClientActive = false;
+  SyncedMemoryBuffer *buffer;
   
 public:
   AsyncArducam(byte model) : ArduCAM(model, VCS)
   {
   }
   
-  bool begin(uint8_t size)
+  bool setup(uint8_t size, SyncedMemoryBuffer* mb)
   {
+    buffer = mb;
+    
     Wire.begin();
   
     pinMode(VCS, OUTPUT);
@@ -87,56 +92,57 @@ public:
   }
   
   // Call repeatedly (from loop()). Will initiate capturing if last image too old. Will copy. Will not block
-  void drive(SyncedMemoryBuffer* buffer, bool clientConnected)
+  void drive(bool clientConnected)
+  {
+    imageClientActive = clientConnected;
+  }
+
+  virtual void run()
   {
     if (!cameraReady)
       return;
 
-    if (captureStarted && !isCaptureActive()) {
-      lastCaptureDuration = millis() - lastCaptureStart;
-      if (lastCaptureDuration > 300)
-        Serial.print("C" + String(lastCaptureDuration) + " ");
-      else
-        Serial.print("C ");
+    while (true) {
+      uint32_t loopStart = millis();
       
-      ffsOnLine++;
-  
-      if (++ffsOnLine % 20 == 0)
-        Serial.println();
-    
-      initiateCopy();
-    }
-    
-    if (copyActive) {
-      copyData(buffer);
-    } else if (!captureStarted) {
-      if (lastCaptureStart == 0) {
-        initiateCapture();
-      } else {
+      if (captureStarted && !isCaptureActive()) {
+        lastCaptureDuration = millis() - lastCaptureStart;
+        if (lastCaptureDuration > 300)
+          Serial.print("C" + String(lastCaptureDuration) + " ");
+        else
+          Serial.print("C ");
         
-        // TODO use a median of capture times?
-        // TODO configure 500?
-        // TODO only do frame limiting for poor wifi performance (low power)?
-        uint32_t possibleCaptureStartTime = buffer->timestamp() + 500 - lastCaptureDuration;
-        uint32_t now = millis();
-        if ((clientConnected && now >= possibleCaptureStartTime) || (millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
+        ffsOnLine++;
+    
+        if (++ffsOnLine % 20 == 0)
+          Serial.println();
+      
+        initiateCopy();
+      }
+      
+      if (copyActive) {
+        copyDataToBuffer();
+      } else if (!captureStarted) {
+        if (lastCaptureStart == 0) {
           initiateCapture();
+        } else {
+          
+          // TODO use a median of capture times?
+          // TODO configure 500?
+          // TODO only do frame limiting for poor wifi performance (low power)?
+          uint32_t possibleCaptureStartTime = buffer->timestamp() + 500 - lastCaptureDuration;
+          uint32_t now = millis();
+          if ((imageClientActive && now >= possibleCaptureStartTime) || (millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
+            initiateCapture();
+          }
         }
       }
+      
+      int32_t sleepNow = 2 - (millis() - loopStart);
+      if (sleepNow >= 0)
+        delay(sleepNow);
     }
   }
-
-  /* TODO? Doesn't really help: 50mA instead of 100mA. AND it cannot be switched on after an microcontroller reset.
-  void turnOff()
-  {
-    set_bit(ARDUCHIP_GPIO, GPIO_PWDN_MASK);
-    cameraReady = false; // TODO this is only half - see below?
-  }
-
-  void turnOn()
-  {
-    clear_bit(ARDUCHIP_GPIO, GPIO_PWDN_MASK);
-  }*/
 
   bool isReady()
   {
@@ -193,7 +199,7 @@ private:
     return !get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK);
   }
 
-  void copyData(SyncedMemoryBuffer* buffer)
+  void copyDataToBuffer()
   {
     if (semaphoreWaitStartTime == 0) {
       semaphoreWaitStartTime = millis();
@@ -214,8 +220,6 @@ private:
       Serial.print("X"+String(millis() - semaphoreWaitStartTime)+" ");
     semaphoreWaitStartTime = 0;
     writtenSemaphoreError = false;
-
-    uint32_t methodStartTime = micros();
 
     if (currentDataInCamera == 0) {
       currentDataInCamera = read_fifo_length();
@@ -249,15 +253,7 @@ private:
 
       SPI.transferBytes(bufferPointer, bufferPointer, copyNow);
       currentlyCopied += copyNow;
-
-      // NOTE this has the right result (time taken) even for an overflow of micros() ("negative" result)
-      uint16_t passed = micros() - methodStartTime;
-      if (passed >= 1000) {
-        if (passed > 3000)
-          Serial.print("!"+String(passed));
-
-        return; // maintain system responsiveness
-      }
+      // TODO could also copy in one go now
     }
     
     //Serial.print('F');

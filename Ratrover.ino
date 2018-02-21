@@ -80,7 +80,9 @@ void setup()
   outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  if (!camera.begin(OV2640_800x600)) {  // OV2640_320x240, OV2640_1600x1200, 
+  buffer.setup();
+  
+  if (!camera.setup(OV2640_800x600, &buffer)) {  // OV2640_320x240, OV2640_1600x1200, 
     //while(1);
     cameraValid = false;
   }
@@ -94,8 +96,6 @@ void setup()
   controlServer.begin();
   imageServer.begin();
 
-  buffer.setup();
-
   if (cameraValid)
     digitalWrite(LED2, HIGH);
   digitalWrite(IRLED2, HIGH);
@@ -105,6 +105,8 @@ void setup()
     buffer.take("");
     buffer.release(17000);
   }
+
+  camera.start();
   
   Serial.println("Waiting for connection to our webserver...");
 }
@@ -118,7 +120,7 @@ void loop()
   imageServer.drive(&buffer, !camera.isReady());
 
   if (cameraValid && camera.isReady()) {
-    camera.drive(&buffer, imageServer.clientConnected());
+    camera.drive(imageServer.clientConnected());
   }
   
   int32_t sleepNow = 1000 - (micros() - loopStartTime);

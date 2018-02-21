@@ -21,6 +21,7 @@
 #include "SyncedMemoryBuffer.h"
 #include <lwip/sockets.h>
 
+// TODO join with DriveableServer?
 class ImageServer : public DriveableServer
 {
 private:
