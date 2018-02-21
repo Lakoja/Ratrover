@@ -32,6 +32,7 @@ private:
   uint32_t lastTransferredTimestamp = 0;
   uint32_t imageStartTime = 0;
   uint32_t semaphoreWaitStartTime = 0;
+  uint16_t outCount = 0;
 
 public:
   ImageServer(int port) : DriveableServer(port)
@@ -39,7 +40,7 @@ public:
     
   }
 
-  void drive(SyncedMemoryBuffer* buffer)
+  void drive(SyncedMemoryBuffer* buffer, bool ignoreImageAge)
   {
     DriveableServer::drive();
     
@@ -48,9 +49,8 @@ public:
 
     if (transferActive) {
       //Serial.print("t");
-      transferBuffer(buffer);
+      transferBuffer(buffer, ignoreImageAge);
     } 
-    // TODO use client.setTimeout?
   }
 
 protected:
@@ -83,25 +83,26 @@ protected:
   }
 
 private:
-  void transferBuffer(SyncedMemoryBuffer* buffer)
+  void transferBuffer(SyncedMemoryBuffer* buffer, bool ignoreImageAge)
   {
     if (!transferActive)
       return;
 
-    if (lastTransferredTimestamp == buffer->timestamp())
+    if (!ignoreImageAge && lastTransferredTimestamp == buffer->timestamp())
       return;
+    // TODO print wait time for picture?
 
     if (semaphoreWaitStartTime == 0)
       semaphoreWaitStartTime = millis();
 
     if (!hasBufferSemaphore)
-      hasBufferSemaphore = buffer->take();
+      hasBufferSemaphore = buffer->take("iserve");
 
     if (!hasBufferSemaphore)
       return;
 
-    if (millis() - semaphoreWaitStartTime > 0)
-      Serial.print("W"+String(millis() - semaphoreWaitStartTime));
+    if (millis() - semaphoreWaitStartTime > 500)
+      Serial.print("W"+String(millis() - semaphoreWaitStartTime)+" ");
     semaphoreWaitStartTime = 0;
 
     uint32_t methodStartTime = micros();
@@ -118,59 +119,68 @@ private:
         return;
       }
 
-      client.println("--frame");
-      client.println("Content-Type: image/jpeg");
-      client.println("Content-Length: " + String(currentlyInBuffer));
-      client.println();
+      String imageHeader = "--frame\n";
+      imageHeader += "Content-Type: image/jpeg\n";
+      imageHeader += "Content-Length: ";
+      imageHeader += String(currentlyInBuffer);
+      imageHeader += "\n\n";
+      client.print(imageHeader); // Print as one block - would also work ok with setNoDelay(true)
+
       imageStartTime = millis();
     }
-    
+
+    bool firstWrite = true;
     while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 10000) {
       uint32_t blockStart = micros();
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
-      uint32_t copyNow = currentlyInBuffer - currentlyTransferred;
+      uint32_t copyNow = _min(2000, currentlyInBuffer - currentlyTransferred);
 
       currentlyTransferred += client.write(bufferPointer, copyNow);
       uint32_t blockEnd = micros();
 
-      if (blockEnd - blockStart > 10000L) {
-        //Serial.print("b"+String((blockEnd - blockStart) / 1000.0f));
+      uint16_t blockWriteMillis = (blockEnd - blockStart) / 1000;
+      if (blockWriteMillis > 200) {
+        Serial.print("b!"+String(blockWriteMillis)+"");
+
+        outCount++;
+
+        if (outCount % 15 == 0) {
+          Serial.println();
+        }
+        
+        delay(100);
+      } else {
+        //Serial.print("b"+String(blockWriteMillis));
       }
+      
+
+      //if (!firstWrite)
+      //  Serial.print("w");
+
+      firstWrite = false;
     }
     
-    if (client.connected() && currentlyTransferred == currentlyInBuffer) {
-      client.println();
-      //client.flush();
-
-      uint32_t waitForReplyStart = millis();
-
-      while (client.available() < 2) { // NOTE checking for "3" will never return; \n does not count?
-        delayMicroseconds(200);
-        uint16_t passed = millis() - waitForReplyStart;
-        if (passed > 1000) {
-          Serial.println("Waited too long for acknowledgement.");
-          break;
-        }
-      }
-      
-      int data1 = client.read();
-      int data2 = client.read();
-      int data3 = client.read();
-
-      uint16_t passed = millis() - waitForReplyStart;
-      
-      if (data1 == 'o' && data2 == 'k' && data3 == '\n') {
-        //Serial.println("Client acknowledged "+String(passed));
-      } else {
-        Serial.print("Client did not acknowledged "+String(passed)+" ");
-        Serial.print(data1);
-        Serial.print(data2);
-        Serial.print(data3);
-        Serial.println();
+    if (currentlyTransferred == currentlyInBuffer) {
+      uint16_t waitTime = 0;
+      if (client.connected()) {
+        client.println();
+        
+        //waitTime = waitForAcknowledge();
+        client.flush();
       }
       
       imageCounter++;
-      Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
+      //Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
+      uint32_t totalImageTime = millis() - imageStartTime;
+      if (totalImageTime > 500) {
+        Serial.print("T"+String(totalImageTime)+" ");//(i"+String(waitTime)+") ");
+
+        outCount++;
+
+        if (outCount % 15 == 0) {
+          Serial.println();
+        }
+      }
       imageStartTime = 0;
       lastTransferredTimestamp = buffer->timestamp();
       currentlyInBuffer = 0;
@@ -179,38 +189,17 @@ private:
       buffer->release();
       hasBufferSemaphore = false;
 
-/*
-      // check if connection is really alive
-      if (client.connected()) {
-        Serial.print("Hl");
-        uint8_t dummy;
-        int res = recv(client.fd(), &dummy, 0, MSG_DONTWAIT);
-        if (res <= 0) {
-            switch (errno) {
-                case ENOTCONN:
-                case EPIPE:
-                case ECONNRESET:
-                case ECONNREFUSED:
-                case ECONNABORTED:
-                    Serial.print("-");
-                    break;
-                default:
-                    Serial.print("+"+String(errno));
-                    break;
-            }
-        }
-        else {
-            // Should never happen since requested 0 bytes
-            Serial.print("x");
-        }
+      // TODO check for connection? keep-alive?
+      if (!hasClient()) {
+        //Serial.println("Server has no client."); // TODO this always the case?
       }
-*/
-      
-  
+
       if (imageCounter++ > 1000) {
         transferActive = false;
-        client.flush();
-        client.stop();
+        if (client.connected()) {
+          client.flush();
+          client.stop();
+        }
   
         Serial.println("Stopped after "+String(imageCounter)+" images");
         Serial.println("Total server side time: "+String(millis() - clientConnectTime)+"ms");
@@ -220,6 +209,52 @@ private:
       buffer->release();
       hasBufferSemaphore = false;
     }
+  }
+
+  uint16_t waitForAcknowledge()
+  {
+      uint32_t waitForReplyStart = millis();
+
+      bool alreadyPrinted = false;
+      while (client.available() < 2) { // NOTE checking for "3" will never return; \n does not count?
+        delayMicroseconds(200);
+        uint16_t passed = millis() - waitForReplyStart;
+        if (passed > 1000) {
+          Serial.println("Waited too long for acknowledgement. "+String(passed)+" "+String(client.connected()));
+          alreadyPrinted = true;
+          break;
+        }
+      }
+      
+      int data1 = client.read();
+      int data2 = client.read();
+      int data3 = client.read();
+
+      uint16_t passed = millis() - waitForReplyStart;
+
+      if (passed > 300 && !alreadyPrinted) {
+        Serial.println("Acknowledging took long "+String(passed));
+      }
+      
+      if (data1 == 'o' && data2 == 'k' && data3 == '\n') {
+        //Serial.println("Client acknowledged "+String(passed));
+      } else {
+        Serial.print("NAK ");
+
+        outCount++;
+
+        if (outCount % 15 == 0) {
+          Serial.println();
+        }
+        /*
+        Serial.print("Client did not acknowledged "+String(passed)+" ");
+        Serial.print(data1);
+        Serial.print(data2);
+        Serial.print(data3);
+        Serial.println();*/
+      }
+
+      return millis() - waitForReplyStart;
   }
 };
 

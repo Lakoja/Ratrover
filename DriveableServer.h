@@ -52,11 +52,12 @@ public:
       
       client = accept();
 
-      if (client)
-        Serial.print("O");
+      if (client) {
+        Serial.print("I ");
+      }
     }
 
-    if (!client || !client.connected())
+    if (!client.connected())
       return;
 
     if (!clientNowConnected) {
@@ -68,8 +69,8 @@ public:
 
       Serial.print("Client connected. IP address: ");
       Serial.println(client.remoteIP());
-      client.setTimeout(5);
-      client.setNoDelay(true); // imperative for at least _some_ throughput with smaller packets (1460)
+      //client.setTimeout(5);
+      //client.setNoDelay(true); // imperative for at least _some_ throughput with smaller packets (1460)
     }
 
     if (waitForRequest) {
@@ -79,9 +80,11 @@ public:
         waitForRequest = false;
         
         if (shouldAccept(requested)) {
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: "+contentType(requested));
-          client.println();
+          String responseHeader = "HTTP/1.1 200 OK\n";
+          responseHeader += "Content-Type: ";
+          responseHeader += contentType(requested);
+          responseHeader += "\n\n";
+          client.print(responseHeader);
 
           startHandling(requested);
         } else {

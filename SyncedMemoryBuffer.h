@@ -27,6 +27,7 @@ private:
   uint32_t currentTimestamp = 0;
   uint32_t currentContentSize = 0;
   SemaphoreHandle_t semaphore;
+  String currentOwner = "";
   
 public:
   SyncedMemoryBuffer()
@@ -50,9 +51,13 @@ public:
     return maxBufferSize;
   }
 
-  bool take()
+  bool take(String taker)
   {
-    return xSemaphoreTake(semaphore, 0) == pdTRUE;
+    bool ok = xSemaphoreTake(semaphore, 0) == pdTRUE;
+    if (ok) {
+      currentOwner = taker;
+    }
+    return ok;
   }
 
   void release(uint32_t dataLength = 0)
@@ -61,8 +66,15 @@ public:
       currentContentSize = dataLength;
       currentTimestamp = millis();
     }
+
+    currentOwner = "";
     
     xSemaphoreGive(semaphore);
+  }
+
+  String getTaker()
+  {
+    return currentOwner;
   }
 
   byte* content()

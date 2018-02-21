@@ -58,8 +58,8 @@ public:
       
       waitForRequest = true;
 
-      Serial.print("Client connected. IP address: ");
-      Serial.println(client.remoteIP());
+      //Serial.print("Client connected. IP address: ");
+      //Serial.println(client.remoteIP());
     }
 
     if (waitForRequest) {

@@ -16,6 +16,9 @@
  
 #include <WiFi.h>
 
+#include <esp_err.h>
+#include <esp_wifi.h>
+
 #include "AsyncArducam.h"
 #include "ImageServer.h"
 #include "ContinuousControl.h"
@@ -26,17 +29,27 @@ const int LED1 = 2;
 const int LED2 = 4;
 const int IRLED2 = 13;
 
+const int CHANNEL = 8;
+
 SyncedMemoryBuffer buffer;
 Motor motor;
 ImageServer imageServer(81);
 ContinuousControl controlServer(&motor, 80);
 AsyncArducam camera(OV2640);
+bool cameraValid = true;
 
 bool setupWifi()
 {
   WiFi.mode(WIFI_AP);
+
+  /* Probably doesn't really save power...
+  esp_err_t error = esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G);
+  if (error != 0) {
+    Serial.println("Set protocol error "+String(error));
+  }*/
+  
   bool b1 = WiFi.softAPConfig(IPAddress(192,168,151,1), IPAddress(192,168,151,254), IPAddress(255,255,255,0));
-  bool b2 = WiFi.softAP("Roversnail", NULL, 8); // TODO scan continuum?
+  bool b2 = WiFi.softAP("Roversnail", NULL, CHANNEL); // TODO scan continuum?
   delay(100);
 
   if (b1 && b2) {
@@ -68,7 +81,8 @@ void setup()
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
   if (!camera.begin(OV2640_800x600)) {  // OV2640_320x240, OV2640_1600x1200, 
-    while(1);
+    //while(1);
+    cameraValid = false;
   }
 
   digitalWrite(LED1, HIGH);
@@ -82,8 +96,15 @@ void setup()
 
   buffer.setup();
 
-  digitalWrite(LED2, HIGH);
+  if (cameraValid)
+    digitalWrite(LED2, HIGH);
   digitalWrite(IRLED2, HIGH);
+
+  // TODO remove this test bit
+  if (!cameraValid) {
+    buffer.take("");
+    buffer.release(17000);
+  }
   
   Serial.println("Waiting for connection to our webserver...");
 }
@@ -94,9 +115,12 @@ void loop()
 
   controlServer.drive();
   motor.drive();
-  imageServer.drive(&buffer);
-  camera.drive(&buffer, imageServer.clientConnected());
+  imageServer.drive(&buffer, !camera.isReady());
 
+  if (cameraValid && camera.isReady()) {
+    camera.drive(&buffer, imageServer.clientConnected());
+  }
+  
   int32_t sleepNow = 1000 - (micros() - loopStartTime);
   
   if (sleepNow >= 0)

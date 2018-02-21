@@ -30,13 +30,14 @@ const int VSCK = 18;
 const int VMISO = 19;
 const int VMOSI = 23;
 
-const int16_t OLDER_IS_TOO_OLD = 700; // only effective when idle
+const int16_t OLDER_IS_TOO_OLD = 600; // only effective when idle; + capture time
 
 class AsyncArducam : public ArduCAM
 {
 private:
   bool cameraReady = false;
   uint32_t lastCaptureStart = 0;
+  uint16_t lastCaptureDuration = 200;
   uint32_t lastCopyStart = 0;
   bool captureStarted = false;
   bool copyActive = false;
@@ -60,7 +61,7 @@ public:
   
     SPI.begin(VSCK, VMISO, VMOSI, VCS);
     SPI.setFrequency(8000000);
-  
+
     //Check if the ArduCAM SPI bus is OK
     write_reg(ARDUCHIP_TEST1, 0x55);
     uint8_t temp = read_reg(ARDUCHIP_TEST1);
@@ -68,19 +69,13 @@ public:
       Serial.println("SPI1 interface Error!");
       return false;
     }
-  
-    //Check if the camera module type is OV2640; TODO? model is a parameter here
-    uint8_t vid, pid;
-    wrSensorReg8_8(0xff, 0x01);
-    rdSensorReg8_8(OV2640_CHIPID_HIGH, &vid);
-    rdSensorReg8_8(OV2640_CHIPID_LOW, &pid);
-    if ((vid != 0x26 ) && (( pid != 0x41 ) || ( pid != 0x42 ))) {
-      Serial.println("Can't find OV2640 module!");
+
+    bool checkSuccess = checkCamera();
+
+    if (!checkSuccess) {
       return false;
-    } else {
-      Serial.println("OV2640 detected.");
     }
-  
+
     set_format(JPEG);
     InitCAM();
     OV2640_set_JPEG_size(size);
@@ -94,36 +89,86 @@ public:
   // Call repeatedly (from loop()). Will initiate capturing if last image too old. Will copy. Will not block
   void drive(SyncedMemoryBuffer* buffer, bool clientConnected)
   {
-      if (!cameraReady)
-        return;
+    if (!cameraReady)
+      return;
 
-      if (captureStarted && !isCaptureActive()) {
-        int total_time = millis() - lastCaptureStart;
-        Serial.print("C" + String(total_time) + " ");
-        
-        ffsOnLine++;
+    if (captureStarted && !isCaptureActive()) {
+      lastCaptureDuration = millis() - lastCaptureStart;
+      if (lastCaptureDuration > 300)
+        Serial.print("C" + String(lastCaptureDuration) + " ");
+      else
+        Serial.print("C ");
+      
+      ffsOnLine++;
+  
+      if (++ffsOnLine % 20 == 0)
+        Serial.println();
     
-        if (++ffsOnLine % 20 == 0)
-          Serial.println();
-      
-        initiateCopy();
-      }
-      
-      if (copyActive)
-        copyData(buffer);
-      else if (!captureStarted && (clientConnected || lastCaptureStart == 0 || millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
+      initiateCopy();
+    }
+    
+    if (copyActive) {
+      copyData(buffer);
+    } else if (!captureStarted) {
+      if (lastCaptureStart == 0) {
         initiateCapture();
+      } else {
+        
+        // TODO use a median of capture times?
+        // TODO configure 500?
+        // TODO only do frame limiting for poor wifi performance (low power)?
+        uint32_t possibleCaptureStartTime = buffer->timestamp() + 500 - lastCaptureDuration;
+        uint32_t now = millis();
+        if ((clientConnected && now >= possibleCaptureStartTime) || (millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
+          initiateCapture();
+        }
       }
+    }
+  }
+
+  /* TODO? Doesn't really help: 50mA instead of 100mA. AND it cannot be switched on after an microcontroller reset.
+  void turnOff()
+  {
+    set_bit(ARDUCHIP_GPIO, GPIO_PWDN_MASK);
+    cameraReady = false; // TODO this is only half - see below?
+  }
+
+  void turnOn()
+  {
+    clear_bit(ARDUCHIP_GPIO, GPIO_PWDN_MASK);
+  }*/
+
+  bool isReady()
+  {
+    return cameraReady;
   }
   
 private:
+  bool checkCamera()
+  {
+    //Check if the camera module type is OV2640; TODO? model is a parameter above
+    uint8_t vid, pid;
+    wrSensorReg8_8(0xff, 0x01);
+    rdSensorReg8_8(OV2640_CHIPID_HIGH, &vid);
+    rdSensorReg8_8(OV2640_CHIPID_LOW, &pid);
+    if ((vid != 0x26 ) && (( pid != 0x41 ) || ( pid != 0x42 ))) {
+      Serial.println("Can't find OV2640 module!");
+      return false;
+    } else {
+      Serial.println("OV2640 detected.");
+      return true;
+    }
+  }
+
   void initiateCapture() 
   {
     if (captureStarted)
       return;
     
     captureStarted = true;
-    lastCaptureStart = millis();
+    uint32_t now = millis();
+    //Serial.print("D"+String(now-lastCaptureStart)+" ");
+    lastCaptureStart = now;
     
     clear_fifo_flag();
     start_capture();
@@ -150,22 +195,23 @@ private:
 
   void copyData(SyncedMemoryBuffer* buffer)
   {
-    if (semaphoreWaitStartTime == 0)
+    if (semaphoreWaitStartTime == 0) {
       semaphoreWaitStartTime = millis();
+    }
       
     if (!hasCopySemaphore)
-      hasCopySemaphore = buffer->take();
+      hasCopySemaphore = buffer->take("cam");
 
     if (!hasCopySemaphore) {
       if (millis() - semaphoreWaitStartTime > 10000 && !writtenSemaphoreError) {
-        Serial.println("XXX Never got semaphore for image copy");
+        Serial.println("\nXXX Never got semaphore for image copy; owner "+buffer->getTaker());
         writtenSemaphoreError = true;
       }
       return;
     }
 
-    if (millis() - semaphoreWaitStartTime > 10)
-      Serial.print("X"+String(millis() - semaphoreWaitStartTime));
+    if (millis() - semaphoreWaitStartTime > 500)
+      Serial.print("X"+String(millis() - semaphoreWaitStartTime)+" ");
     semaphoreWaitStartTime = 0;
     writtenSemaphoreError = false;
 
@@ -176,7 +222,7 @@ private:
 
       if (currentDataInCamera >= 0x07ffff){
         currentDataInCamera = 0;
-        Serial.println("Camera data length over size.");
+        Serial.println("Camera data length over size." + currentDataInCamera);
         return;
       } else if (currentDataInCamera == 0 ){
         Serial.println("Camera data length is 0.");
