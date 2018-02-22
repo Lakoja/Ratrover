@@ -17,14 +17,20 @@
 #ifndef __IMAGE_SERVER_H__
 #define __IMAGE_SERVER_H__
  
-#include "DriveableServer.h"
+#include <WiFiServer.h>
 #include "SyncedMemoryBuffer.h"
 #include <lwip/sockets.h>
 
 // TODO join with DriveableServer?
-class ImageServer : public DriveableServer
+class ImageServer : public WiFiServer
 {
 private:
+  bool clientNowConnected = false;
+  bool waitForRequest = false;
+  String currentLine = "";
+  WiFiClient client;
+  uint32_t clientConnectTime;
+  
   uint16_t imageCounter = 0;
   bool transferActive = false;
   uint32_t currentlyTransferred = 0;
@@ -36,35 +42,83 @@ private:
   uint16_t outCount = 0;
 
 public:
-  ImageServer(int port) : DriveableServer(port)
+  ImageServer(int port) : WiFiServer(port)
   {
     
   }
 
+  bool clientConnected()
+  {
+    return client.connected();
+  }
+  
   void drive(SyncedMemoryBuffer* buffer, bool ignoreImageAge)
   {
-    DriveableServer::drive();
-    
+    if (!client.connected()) {
+      if (clientNowConnected) {
+        stopHandling();
+        Serial.println("Disconnected Dr");
+      }
+        
+      clientNowConnected = false;
+      
+      client = accept();
+
+      if (client) {
+        Serial.print("I ");
+      }
+    }
+
+    if (!client.connected())
+      return;
+
+    if (!clientNowConnected) {
+      clientNowConnected = true;
+      clientConnectTime = millis();
+      currentLine = "";
+      
+      waitForRequest = true;
+
+      Serial.print("Client connected. IP address: ");
+      Serial.println(client.remoteIP());
+      //client.setTimeout(5);
+      //client.setNoDelay(true); // imperative for at least _some_ throughput with smaller packets (1460)
+    }
+
+    if (waitForRequest) {
+      String requested = parseRequest();
+
+      if (requested.length() > 0) {
+        waitForRequest = false;
+        
+        if (requested.startsWith("/ ")) {
+          String responseHeader = "HTTP/1.1 200 OK\n";
+          responseHeader += "Content-Type: multipart/x-mixed-replace; boundary=frame\n";
+          responseHeader += "\n";
+          client.print(responseHeader);
+
+          startHandling(requested);
+        } else {
+          Serial.println("Ignoring request "+requested);
+          
+          client.println("HTTP/1.1 404 Not Found");
+          client.println();
+          client.stop();
+        }
+      }
+    }
+
     if (!client.connected())
       return;
 
     if (transferActive) {
-      //Serial.print("t");
       transferBuffer(buffer, ignoreImageAge);
     } 
+    
+    // TODO use client.setTimeout?
   }
 
-protected:
-  virtual bool shouldAccept(String requested)
-  {
-    return requested.startsWith("/ ");
-  }
-
-  virtual String contentType(String requested)
-  {
-    return "multipart/x-mixed-replace; boundary=frame";
-  }
-
+private:
   virtual void startHandling(String requested)
   {
     Serial.println("Starting handling");
@@ -125,12 +179,11 @@ private:
       imageHeader += "Content-Length: ";
       imageHeader += String(currentlyInBuffer);
       imageHeader += "\n\n";
-      client.print(imageHeader); // Print as one block - would also work ok with setNoDelay(true)
+      client.print(imageHeader); // Print as one block - will also work ok with setNoDelay(true)
 
       imageStartTime = millis();
     }
 
-    bool firstWrite = true;
     while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 10000) {
       uint32_t blockStart = micros();
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
@@ -153,12 +206,6 @@ private:
       } else {
         //Serial.print("b"+String(blockWriteMillis));
       }
-      
-
-      //if (!firstWrite)
-      //  Serial.print("w");
-
-      firstWrite = false;
     }
     
     if (currentlyTransferred == currentlyInBuffer) {
@@ -214,48 +261,96 @@ private:
 
   uint16_t waitForAcknowledge()
   {
-      uint32_t waitForReplyStart = millis();
+    uint32_t waitForReplyStart = millis();
 
-      bool alreadyPrinted = false;
-      while (client.available() < 2) { // NOTE checking for "3" will never return; \n does not count?
-        delayMicroseconds(200);
-        uint16_t passed = millis() - waitForReplyStart;
-        if (passed > 1000) {
-          Serial.println("Waited too long for acknowledgement. "+String(passed)+" "+String(client.connected()));
-          alreadyPrinted = true;
-          break;
-        }
-      }
-      
-      int data1 = client.read();
-      int data2 = client.read();
-      int data3 = client.read();
-
+    bool alreadyPrinted = false;
+    while (client.available() < 2) { // NOTE checking for "3" will never return; \n does not count?
+      delayMicroseconds(200);
       uint16_t passed = millis() - waitForReplyStart;
-
-      if (passed > 300 && !alreadyPrinted) {
-        Serial.println("Acknowledging took long "+String(passed));
+      if (passed > 1000) {
+        Serial.println("Waited too long for acknowledgement. "+String(passed)+" "+String(client.connected()));
+        alreadyPrinted = true;
+        break;
       }
-      
-      if (data1 == 'o' && data2 == 'k' && data3 == '\n') {
-        //Serial.println("Client acknowledged "+String(passed));
-      } else {
-        Serial.print("NAK ");
+    }
+    
+    int data1 = client.read();
+    int data2 = client.read();
+    int data3 = client.read();
 
-        outCount++;
+    uint16_t passed = millis() - waitForReplyStart;
 
-        if (outCount % 15 == 0) {
-          Serial.println();
+    if (passed > 300 && !alreadyPrinted) {
+      Serial.println("Acknowledging took long "+String(passed));
+    }
+    
+    if (data1 == 'o' && data2 == 'k' && data3 == '\n') {
+      //Serial.println("Client acknowledged "+String(passed));
+    } else {
+      Serial.print("NAK ");
+
+      outCount++;
+
+      if (outCount % 15 == 0) {
+        Serial.println();
+      }
+      /*
+      Serial.print("Client did not acknowledged "+String(passed)+" ");
+      Serial.print(data1);
+      Serial.print(data2);
+      Serial.print(data3);
+      Serial.println();*/
+    }
+
+    return millis() - waitForReplyStart;
+  }
+
+  String parseRequest()
+  {
+    if (!waitForRequest)
+      return "";
+
+    if (millis() - clientConnectTime > 2000) {
+      waitForRequest = false;
+      client.stop();
+      Serial.println("Waited too long for a client request. Current line content: "+currentLine);
+    }
+    
+    uint32_t methodStartTime = micros();
+
+    //Serial.print("P"+String(client.available() > 0));
+
+    // TODO simplify time check
+    while (client.connected() && micros() - methodStartTime < 2000) {
+      if (client.available() == 0)
+        delayMicroseconds(200);
+
+      while (client.available() > 0 && micros() - methodStartTime < 2000) {
+        /* This does not read past the first line and results in a "broken connection" in Firefox
+        String oneRequestLine = client.readStringUntil('\n');
+        Serial.println(oneRequestLine);
+        if (currentLine.length() == 0) {
+          break;
+        }*/
+        
+        char c = client.read();
+        if (c == '\n') {
+          if (currentLine.length() == 0) {
+            Serial.print("B");
+            break;
+          } else {
+            if (currentLine.startsWith("GET ")) {
+              return currentLine.substring(4);
+            }
+            currentLine = "";
+          }
+        } else if (c != '\r') {
+          currentLine += c;
         }
-        /*
-        Serial.print("Client did not acknowledged "+String(passed)+" ");
-        Serial.print(data1);
-        Serial.print(data2);
-        Serial.print(data3);
-        Serial.println();*/
       }
+    }
 
-      return millis() - waitForReplyStart;
+    return "";
   }
 };
 
