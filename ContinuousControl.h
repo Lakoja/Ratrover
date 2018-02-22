@@ -18,9 +18,10 @@
 #define __CONTINUOUS_CONTROL_H__
 
 #include <WiFiServer.h>
+#include "Task.h"
 #include "Motor.h"
 
-class ContinuousControl : public WiFiServer
+class ContinuousControl : public WiFiServer, public Task
 {
 private:
   WiFiClient client;
@@ -35,72 +36,79 @@ public:
     motor = m;
   }
 
-  void drive()
+  virtual void run()
   {
-    if (!client || !client.connected()) {
-      if (clientNowConnected)
-        Serial.println("Disconnected Co");
+    while (true) {
+      uint32_t loopStart = millis();
+      if (!client.connected()) {
+        if (clientNowConnected)
+          Serial.println("Disconnected Co");
       
-      clientNowConnected = false;
+        clientNowConnected = false;
       
-      client = accept();
+        client = accept();
 
-      if (client)
-        Serial.print("N");
-    }
-
-    if (!client || !client.connected())
-      return;
-
-    if (!clientNowConnected) {
-      clientNowConnected = true;
-      clientConnectTime = millis();
-      
-      waitForRequest = true;
-
-      //Serial.print("Client connected. IP address: ");
-      //Serial.println(client.remoteIP());
-    }
-
-    if (waitForRequest) {
-      String requested = parseRequest();
-
-      if (requested.length() > 0) {
-        Serial.println("Requested "+requested);
-
-        if (requested.startsWith("left ")
-          || requested.startsWith("right ")
-          || requested.startsWith("fore ")
-          || requested.startsWith("back ")) {
-
-          float v = -100;
-          if (requested.startsWith("left ")) {
-            v = parseValue(requested.substring(5));
-            motor->requestRight(v);
-            Serial.println("Left requested "+String(v));
-          } else if (requested.startsWith("right ")) {
-            v = parseValue(requested.substring(6));
-            motor->requestLeft(v);
-            Serial.println("Right requested "+String(v));
-          } if (requested.startsWith("fore ")) {
-            Serial.println("fore "+requested.substring(5));
-            v = parseValue(requested.substring(5));
-            motor->requestForward(v);
-          } else if (requested.startsWith("back ")) {
-            v = parseValue(requested.substring(5));
-            motor->requestReverse(v);
-            Serial.println("Reverse requested "+String(v));
-          }
-
-          client.println("OKC"+String(v));
-        } else {
-          
-          client.println("HUH?");
-        }
+        if (client)
+          Serial.print("N");
       }
+
+      if (client.connected()) {
+        if (!clientNowConnected) {
+          clientNowConnected = true;
+          clientConnectTime = millis();
+      
+          waitForRequest = true;
+        }
+
+        if (waitForRequest) {
+          String requested = parseRequest();
+        
+          if (requested.length() > 0) {
+            Serial.println("Requested "+requested);
+        
+            if (requested.startsWith("left ")
+              || requested.startsWith("right ")
+              || requested.startsWith("fore ")
+              || requested.startsWith("back ")) {
+
+              // TODO synchronize with motor?
+              
+              float v = -100;
+              if (requested.startsWith("left ")) {
+                v = parseValue(requested.substring(5));
+                motor->requestRight(v);
+                Serial.println("Left requested "+String(v));
+              } else if (requested.startsWith("right ")) {
+                v = parseValue(requested.substring(6));
+                motor->requestLeft(v);
+                Serial.println("Right requested "+String(v));
+              } if (requested.startsWith("fore ")) {
+                Serial.println("fore "+requested.substring(5));
+                v = parseValue(requested.substring(5));
+                motor->requestForward(v);
+              } else if (requested.startsWith("back ")) {
+                v = parseValue(requested.substring(5));
+                motor->requestReverse(v);
+                Serial.println("Reverse requested "+String(v));
+              }
+        
+              client.println("OKC"+String(v));
+            } else {
+              
+              client.println("HUH?");
+            }
+          }
+        }
+        
+        // TODO use client.setTimeout? Or any transmission tracking?
+      }
+
+      int32_t sleepNow = 5 - (millis() - loopStart);
+      if (sleepNow >= 0)
+        delay(sleepNow);
+      else
+        yield();
     }
-    
-    // TODO use client.setTimeout? Or any transmission tracking?
   }
   
 private:
@@ -128,12 +136,11 @@ private:
 
     //Serial.print("P"+String(client.available() > 0));
 
-    // TODO simplify time check - double while loop not necessary here?
     while (client.connected() && micros() - methodStartTime < 2000) {
       if (client.available() == 0)
         delayMicroseconds(200);
 
-      while (client.available() > 0 && micros() - methodStartTime < 2000) {
+      if (client.available() > 0) {
         
         // TODO how not to wait too long here? Still read single bytes?
         String oneRequestLine = client.readStringUntil('\n');

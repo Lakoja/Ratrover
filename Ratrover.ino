@@ -47,6 +47,12 @@ bool setupWifi()
   if (error != 0) {
     Serial.println("Set protocol error "+String(error));
   }*/
+
+  /* This worsens transfer abyss times
+  esp_err_t error = esp_wifi_set_max_tx_power(52); // =level 5 low; or 8, 52, 68 or 127 see esp_wifi.h
+  if (error != 0) {
+    Serial.println("Set max tx error "+String(error));
+  }*/
   
   bool b1 = WiFi.softAPConfig(IPAddress(192,168,151,1), IPAddress(192,168,151,254), IPAddress(255,255,255,0));
   bool b2 = WiFi.softAP("Roversnail", NULL, CHANNEL); // TODO scan continuum?
@@ -106,7 +112,8 @@ void setup()
     buffer.release(17000);
   }
 
-  camera.start();
+  camera.start("cam", 2, 2000);
+  controlServer.start("control", 3);
   
   Serial.println("Waiting for connection to our webserver...");
 }
@@ -115,12 +122,11 @@ void loop()
 {
   uint32_t loopStartTime = micros();
 
-  controlServer.drive();
   motor.drive();
   imageServer.drive(&buffer, !camera.isReady());
 
   if (cameraValid && camera.isReady()) {
-    camera.drive(imageServer.clientConnected());
+    camera.inform(imageServer.clientConnected());
   }
   
   int32_t sleepNow = 1000 - (micros() - loopStartTime);

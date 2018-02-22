@@ -24,20 +24,25 @@ private:
   xTaskHandle taskHandle;
 
 public:
-  void start()
+  void start(String name, UBaseType_t uxPriority = 1, uint16_t stackSize = 5000)
   {
     // TODO what is a reasonable stack size?
-    ::xTaskCreate(&runTask, "Me", 1000, this, 1, &taskHandle);
+    ::xTaskCreate(&runTask, name.c_str(), stackSize, this, uxPriority, &taskHandle);
     // TODO could also use ..PinnedToCore(... tskNO_AFFINITY);
   }
 
-  virtual void run()
-  {
-  }
+  virtual void run() = 0;
   
 protected:
-  void delay(uint16_t ms) {
+  // TODO what is the difference? Is this necessary?
+  void delay(uint16_t ms)
+  {
     ::vTaskDelay(ms / portTICK_PERIOD_MS);
+  }
+
+  void yield()
+  {
+    taskYIELD();
   }
 
 private:

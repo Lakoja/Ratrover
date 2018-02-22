@@ -139,9 +139,9 @@ private:
       currentlyTransferred += client.write(bufferPointer, copyNow);
       uint32_t blockEnd = micros();
 
-      uint16_t blockWriteMillis = (blockEnd - blockStart) / 1000;
+      uint32_t blockWriteMillis = (blockEnd - blockStart) / 1000000.0f;
       if (blockWriteMillis > 200) {
-        Serial.print("b!"+String(blockWriteMillis)+"");
+        Serial.print("b!"+String(blockWriteMillis)+" ");//+String(blockEnd)+" - " +String(blockStart));
 
         outCount++;
 
@@ -149,7 +149,7 @@ private:
           Serial.println();
         }
         
-        delay(100);
+        yield();
       } else {
         //Serial.print("b"+String(blockWriteMillis));
       }

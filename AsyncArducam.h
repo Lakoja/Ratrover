@@ -91,8 +91,7 @@ public:
     return true;
   }
   
-  // Call repeatedly (from loop()). Will initiate capturing if last image too old. Will copy. Will not block
-  void drive(bool clientConnected)
+  void inform(bool clientConnected)
   {
     imageClientActive = clientConnected;
   }
@@ -138,9 +137,11 @@ public:
         }
       }
       
-      int32_t sleepNow = 2 - (millis() - loopStart);
+      int32_t sleepNow = 10 - (millis() - loopStart);
       if (sleepNow >= 0)
         delay(sleepNow);
+      else
+        yield();
     }
   }
 
@@ -253,7 +254,8 @@ private:
 
       SPI.transferBytes(bufferPointer, bufferPointer, copyNow);
       currentlyCopied += copyNow;
-      // TODO could also copy in one go now
+      // TODO could also copy in one go now?
+      yield();
     }
     
     //Serial.print('F');
