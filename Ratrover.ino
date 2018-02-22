@@ -31,12 +31,14 @@ const int IRLED2 = 13;
 
 const int CHANNEL = 8;
 
-SyncedMemoryBuffer buffer;
+SyncedMemoryBuffer cameraBuffer;
+SyncedMemoryBuffer serverBuffer;
 Motor motor;
 ImageServer imageServer(81);
 ContinuousControl controlServer(&motor, 80);
 AsyncArducam camera(OV2640);
 bool cameraValid = true;
+uint32_t lastSuccessfulImageCopy = 0;
 
 bool setupWifi()
 {
@@ -86,9 +88,10 @@ void setup()
   outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  buffer.setup();
+  cameraBuffer.setup();
+  serverBuffer.setup();
   
-  if (!camera.setup(OV2640_800x600, &buffer)) {  // OV2640_320x240, OV2640_1600x1200, 
+  if (!camera.setup(OV2640_800x600, &cameraBuffer)) {  // OV2640_320x240, OV2640_1600x1200, 
     //while(1);
     cameraValid = false;
   }
@@ -100,17 +103,11 @@ void setup()
   }
 
   controlServer.begin();
-  imageServer.begin();
+  imageServer.setup(&serverBuffer);
 
   if (cameraValid)
     digitalWrite(LED2, HIGH);
   digitalWrite(IRLED2, HIGH);
-
-  // TODO remove this test bit
-  if (!cameraValid) {
-    buffer.take("");
-    buffer.release(17000);
-  }
 
   camera.start("cam", 2, 2000);
   controlServer.start("control", 3);
@@ -118,16 +115,43 @@ void setup()
   Serial.println("Waiting for connection to our webserver...");
 }
 
+void copyImage()
+{
+  if (cameraBuffer.timestamp() > serverBuffer.timestamp()) {
+    bool cameraLock = cameraBuffer.take("main");
+    if (cameraLock) {
+      bool serverLock = serverBuffer.take("main");
+  
+      if (serverLock) {
+        cameraBuffer.copyTo(&serverBuffer);
+        
+        uint32_t now = millis();
+        if (now - lastSuccessfulImageCopy > 3000) {
+          Serial.print("LL"+String(now - lastSuccessfulImageCopy)+" ");
+        }
+        
+        lastSuccessfulImageCopy = now;
+        serverBuffer.release(0);
+      }
+
+      cameraBuffer.release(0);
+    }
+  }
+}
+
 void loop() 
 {
   uint32_t loopStartTime = micros();
 
   motor.drive();
-  imageServer.drive(&buffer, !camera.isReady());
 
   if (cameraValid && camera.isReady()) {
     camera.inform(imageServer.clientConnected());
   }
+
+  copyImage();
+
+  imageServer.drive(!camera.isReady());
   
   int32_t sleepNow = 1000 - (micros() - loopStartTime);
   

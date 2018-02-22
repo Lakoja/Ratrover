@@ -72,6 +72,13 @@ public:
     xSemaphoreGive(semaphore);
   }
 
+  void copyTo(SyncedMemoryBuffer *other)
+  {
+    memcpy(other->buffer, buffer, currentContentSize);
+    other->currentContentSize = currentContentSize;
+    other->currentTimestamp = currentTimestamp;
+  }
+
   String getTaker()
   {
     return currentOwner;
@@ -91,6 +98,11 @@ public:
   uint32_t contentSize()
   {
     return currentContentSize;
+  }
+
+  bool hasContent()
+  {
+    return currentContentSize > 0;
   }
 };
 

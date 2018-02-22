@@ -30,6 +30,8 @@ private:
   String currentLine = "";
   WiFiClient client;
   uint32_t clientConnectTime;
+
+  SyncedMemoryBuffer *buffer;
   
   uint16_t imageCounter = 0;
   bool transferActive = false;
@@ -47,12 +49,19 @@ public:
     
   }
 
+  void setup(SyncedMemoryBuffer* mb)
+  {
+    buffer = mb;
+    
+    begin();
+  }
+
   bool clientConnected()
   {
     return client.connected();
   }
   
-  void drive(SyncedMemoryBuffer* buffer, bool ignoreImageAge)
+  void drive(bool ignoreImageAge)
   {
     if (!client.connected()) {
       if (clientNowConnected) {
@@ -112,7 +121,7 @@ public:
       return;
 
     if (transferActive) {
-      transferBuffer(buffer, ignoreImageAge);
+      transferBuffer(ignoreImageAge);
     } 
     
     // TODO use client.setTimeout?
@@ -138,9 +147,12 @@ private:
   }
 
 private:
-  void transferBuffer(SyncedMemoryBuffer* buffer, bool ignoreImageAge)
+  void transferBuffer(bool ignoreImageAge)
   {
     if (!transferActive)
+      return;
+
+    if (!buffer->hasContent())
       return;
 
     if (!ignoreImageAge && lastTransferredTimestamp == buffer->timestamp())
