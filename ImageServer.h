@@ -73,8 +73,11 @@ public:
       
       client = accept();
 
-      if (client) {
-        Serial.print("I ");
+      if (client.connected()) {
+        // TODO does this have any influence at all?
+        bool timeoutSuccess = setTimeoutMillis(300);
+    
+        Serial.print("I"+String(timeoutSuccess)+" ");
       }
     }
 
@@ -196,17 +199,24 @@ private:
       imageStartTime = millis();
     }
 
-    while (client.connected() && currentlyTransferred < currentlyInBuffer && micros() - methodStartTime < 10000) {
-      uint32_t blockStart = micros();
+    uint16_t blockCounter = 0;
+    
+    while (client.connected() && currentlyTransferred < currentlyInBuffer) {
+      uint32_t blockStart = millis();
+      
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
       uint32_t copyNow = _min(2000, currentlyInBuffer - currentlyTransferred);
+      blockCounter++;
 
-      currentlyTransferred += client.write(bufferPointer, copyNow);
-      uint32_t blockEnd = micros();
+      uint32_t transferredNow = client.write(bufferPointer, copyNow);
+      currentlyTransferred += transferredNow;
+      
+      uint32_t blockEnd = millis();
 
-      uint32_t blockWriteMillis = (blockEnd - blockStart) / 1000000.0f;
-      if (blockWriteMillis > 200) {
-        Serial.print("b!"+String(blockWriteMillis)+" ");//+String(blockEnd)+" - " +String(blockStart));
+      uint32_t blockWriteMillis = blockEnd - blockStart;
+      
+      if (blockWriteMillis > 200 || transferredNow <= 0) {
+        Serial.print("b!"+String(blockWriteMillis)+" ");
 
         outCount++;
 
@@ -232,8 +242,21 @@ private:
       imageCounter++;
       //Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
       uint32_t totalImageTime = millis() - imageStartTime;
-      if (totalImageTime > 500) {
-        Serial.print("T"+String(totalImageTime)+" ");//(i"+String(waitTime)+") ");
+      float kbs = (currentlyTransferred / (totalImageTime / 1000.0f)) / 1000.0f;
+      if (totalImageTime > 400) {
+        Serial.print("T"+String(totalImageTime)+"/");
+        Serial.print(kbs, 1);
+        Serial.print(" ");
+
+        outCount++;
+
+        if (outCount % 15 == 0) {
+          Serial.println();
+        }
+      } else {
+        Serial.print("T");
+        Serial.print(kbs, 1);
+        Serial.print(" ");
 
         outCount++;
 
@@ -363,6 +386,21 @@ private:
     }
 
     return "";
+  }
+  
+  bool setTimeoutMillis(uint16_t timoutms)
+  {
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = (uint32_t)timoutms * 1000L;
+    int16_t error = client.setSocketOption(SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval));
+    int16_t error2 = client.setSocketOption(SO_SNDTIMEO, (char *)&tv, sizeof(struct timeval));
+
+    if (error < 0 || error2 < 0) {
+      return false;
+    }
+
+    return true;
   }
 };
 
