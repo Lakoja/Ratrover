@@ -19,6 +19,8 @@
 #include <esp_err.h>
 #include <esp_wifi.h>
 
+const int VOLTAGE = 27;
+
 #include "AsyncArducam.h"
 #include "ImageServer.h"
 #include "ContinuousControl.h"
@@ -39,6 +41,8 @@ ContinuousControl controlServer(&motor, 80);
 AsyncArducam camera(OV2640);
 bool cameraValid = true;
 uint32_t lastSuccessfulImageCopy = 0;
+uint32_t lastVoltageOut = 0;
+bool llWarning = false;
 
 bool setupWifi()
 {
@@ -79,15 +83,24 @@ void outputPin(int num)
 
 void setup() 
 {
-  motor.setup();
-
   Serial.begin(115200);
   Serial.println("ArduCAM Start!");
+
+  analogReadResolution(11); // now range is 0..2047
+  analogSetPinAttenuation(VOLTAGE, ADC_11db); // need full range for 3.3 volt
+
+  //pinMode(VOLTAGE, INPUT);
+  uint16_t volt1 = analogRead(VOLTAGE);
+  delay(10);
+  uint16_t volt2 = analogRead(VOLTAGE);
+
+  Serial.println("Voltage raw "+String(volt1)+" "+String(volt2));
 
   outputPin(LED1);
   outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
+  motor.setup();
   cameraBuffer.setup();
   serverBuffer.setup();
   
@@ -106,10 +119,10 @@ void setup()
   imageServer.setup(&serverBuffer);
 
   if (cameraValid)
-    digitalWrite(LED2, HIGH);
+    ;//digitalWrite(LED2, HIGH);
   digitalWrite(IRLED2, HIGH);
 
-  camera.start("cam", 2, 2000);
+  camera.start("cam", 2, 4000);
   controlServer.start("control", 3);
   
   Serial.println("Waiting for connection to our webserver...");
@@ -119,29 +132,48 @@ void copyImage()
 {
   if (cameraBuffer.timestamp() > serverBuffer.timestamp()) {
     bool cameraLock = cameraBuffer.take("main");
-    if (cameraLock) {
-      bool serverLock = serverBuffer.take("main");
-  
-      if (serverLock) {
-        cameraBuffer.copyTo(&serverBuffer);
-        
-        uint32_t now = millis();
-        if (now - lastSuccessfulImageCopy > 3000) {
-          Serial.print("LL"+String(now - lastSuccessfulImageCopy)+" ");
-        }
-        
-        lastSuccessfulImageCopy = now;
-        serverBuffer.release(0);
-      }
+    bool serverLock = serverBuffer.take("main");
 
-      cameraBuffer.release(0);
+    if (!cameraLock || !serverLock) {
+      uint32_t now = millis();
+      if (!llWarning && now - lastSuccessfulImageCopy > 3000) {
+        llWarning = true;
+        Serial.print("LL cannot "+String(cameraLock)+String(serverLock)+" ");
+      }
+    }
+    
+    if (cameraLock && serverLock) {
+      cameraBuffer.copyTo(&serverBuffer);
+      Serial.print("O ");
+      
+      uint32_t now = millis();
+      if (now - lastSuccessfulImageCopy > 3000) {
+        Serial.print("LL"+String(now - lastSuccessfulImageCopy)+" ");
+        llWarning = false;
+      }
+      
+      lastSuccessfulImageCopy = now;
+    }
+
+    if (cameraLock) {
+      cameraBuffer.release();
+    }
+    
+    if (serverLock) {
+      serverBuffer.release();
+    }
+  } else {
+    uint32_t now = millis();
+    if (!llWarning && now - lastSuccessfulImageCopy > 3000) {
+      llWarning = true;
+      Serial.print("LL nothing "+String(cameraBuffer.timestamp())+"vs"+String(serverBuffer.timestamp())+" ");
     }
   }
 }
 
 void loop() 
 {
-  uint32_t loopStartTime = micros();
+  uint32_t loopStart = millis();
 
   motor.drive();
 
@@ -151,10 +183,17 @@ void loop()
 
   copyImage();
 
+  uint32_t imgStart = millis();
   imageServer.drive(!camera.isReady());
-  
-  int32_t sleepNow = 1000 - (micros() - loopStartTime);
-  
+  uint32_t imgEnd = millis();
+
+  if (imgEnd - imgStart > 20000) {
+    Serial.println("!! Image drive took long "+String(imgEnd-imgStart));
+  }
+
+  int32_t sleepNow = 2 - (millis() - loopStart);
   if (sleepNow >= 0)
-    delayMicroseconds(sleepNow);
+    delay(sleepNow);
+  else
+    yield();
 }
