@@ -302,6 +302,10 @@ private:
   
         Serial.println("Stopped after "+String(imageCounter)+" images");
         Serial.println("Total server side time: "+String(millis() - clientConnectTime)+"ms");
+      } else {
+        // TODO do more elegantly
+
+        delay(20); // give other communication a chance
       }
     } else if (!client.connected()) {
       Serial.println("Emergency buffer release");

@@ -84,7 +84,7 @@ void outputPin(int num)
 void setup() 
 {
   Serial.begin(115200);
-  Serial.println("ArduCAM Start!");
+  Serial.println("Rover start!");
 
   analogReadResolution(11); // now range is 0..2047
   analogSetPinAttenuation(VOLTAGE, ADC_11db); // need full range for 3.3 volt
@@ -105,7 +105,6 @@ void setup()
   serverBuffer.setup();
   
   if (!camera.setup(OV2640_800x600, &cameraBuffer)) {  // OV2640_320x240, OV2640_1600x1200, 
-    //while(1);
     cameraValid = false;
   }
 
@@ -116,14 +115,15 @@ void setup()
   }
 
   controlServer.begin();
-  imageServer.setup(&serverBuffer);
 
-  if (cameraValid)
-    ;//digitalWrite(LED2, HIGH);
+  if (cameraValid) {
+    imageServer.setup(&serverBuffer);
+    //digitalWrite(LED2, HIGH);
+    camera.start("cam", 2, 4000);
+  }
   digitalWrite(IRLED2, HIGH);
 
-  camera.start("cam", 2, 4000);
-  controlServer.start("control", 3);
+  controlServer.start("control", 4);
   
   Serial.println("Waiting for connection to our webserver...");
 }
