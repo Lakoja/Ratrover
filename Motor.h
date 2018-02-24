@@ -28,10 +28,11 @@ const int MOTOR_L2 = 25;
 class Motor
 {
 private:
+  const float DEAD_ZONE_SPEED = 0.12; // motor doesn't move (too weak) below this
+  
   uint32_t systemStart;
   float motorRSpeed = 0;
   float motorLSpeed = 0;
-  float deadZoneSpeed = 0.12; // motor doesn't move (too weak) below this
   uint16_t maxSpeedInt;
   uint32_t motorREndTime;
   uint32_t motorLEndTime;
@@ -109,9 +110,22 @@ public:
     lastDriveLoopTime = now;
   }
 
-  void requestRightBurst(uint16_t durationMillis = 2000)
-  {
-    requestRight(0.4f, durationMillis);
+  void requestMovement(float forward, float right, uint16_t durationMillis = 2000) {
+    // This is the only one with value range -1 .. 1
+
+    float rightSpeed = forward;
+    float leftSpeed = forward;
+    rightSpeed -= right / 2;
+    leftSpeed += right / 2;
+
+    Serial.print("M ");
+    Serial.print(rightSpeed, 1);
+    Serial.print(",");
+    Serial.print(leftSpeed, 1);
+    Serial.print(" ");
+    
+    requestRight(rightSpeed, durationMillis);
+    requestLeft(leftSpeed, durationMillis);
   }
 
   void requestRight(float value, uint16_t durationMillis = 2000)
@@ -119,28 +133,16 @@ public:
     // TODO check for value range?
     
     uint32_t now = millis();
-    motorLEndTime = now;
     motorRDesireSpeed = value;
     motorREndTime = now + durationMillis;
-  }
-  
-  void requestLeftBurst(uint16_t durationMillis = 2000)
-  {
-    requestLeft(0.4f, durationMillis);
   }
   
   void requestLeft(float value, uint16_t durationMillis = 2000)
   {
     uint32_t now = millis();
-    motorREndTime = now;
     motorLDesireSpeed = value;
     motorLEndTime = now + durationMillis;
   }  
-
-  void requestForwardBurst(uint16_t durationMillis = 3000)
-  {
-    requestForward(0.4f, durationMillis);
-  }
   
   void requestForward(float value, uint16_t durationMillis = 3000)
   {
@@ -149,11 +151,6 @@ public:
     motorREndTime = desiredEndTime;
     motorLDesireSpeed = value;
     motorLEndTime = desiredEndTime;
-  }
-
-  void requestReverseBurst(uint16_t durationMillis = 2000)
-  {
-    requestReverse(0.4f, durationMillis);
   }
   
   void requestReverse(float value, uint16_t durationMillis = 2000)
@@ -206,8 +203,9 @@ private:
     uint16_t chan2Speed = speed < 0 ? speedInt : 0;
 
     if (showDebug) {
-      //Serial.println("Make your speed "+String(chan1Speed)+" "+String(chan2Speed));
       Serial.print(chan1Speed);
+      Serial.print(",");
+      Serial.print(chan2Speed);
       Serial.print(" ");
   
       if (++outCounter % 20 == 0)
@@ -223,7 +221,7 @@ private:
     float nonDeadSpeed = 0;
     if (speed != 0) {
       float sign = speed < 0 ? -1 : +1;
-      nonDeadSpeed = sign * deadZoneSpeed + (1 - deadZoneSpeed) * speed;
+      nonDeadSpeed = sign * DEAD_ZONE_SPEED + (1 - DEAD_ZONE_SPEED) * speed;
     }
 
     return nonDeadSpeed;

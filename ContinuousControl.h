@@ -65,22 +65,56 @@ public:
         
           if (requested.length() > 0) {
             Serial.println("Requested "+requested);
-        
-            if (requested.startsWith("left ")
+
+            if (requested.startsWith("move ")) {
+              
+              // TODO synchronize with motor?
+
+              String numberPart = requested.substring(5);
+              int idx = numberPart.indexOf(' ');
+              if (idx > 0 && idx < numberPart.length() - 1) {
+                String numberOne = numberPart.substring(0, idx);
+                String numberTwo = numberPart.substring(idx+1);
+
+                // Sends 0..1000 for the range of -1 .. 1
+                float f = (parseValue(numberOne) - 0.5f) * 2;
+                float r = (parseValue(numberTwo) - 0.5f) * 2;
+
+                if (f > 1 || f < -1 || r > 1 || r < -1) {
+                  Serial.println("\nIgnoring bogus movement value(s) "+String(f)+","+String(r));
+                  client.println("HUH?");
+                } else {
+
+                  // NOTE client only (should) sends values on a circle so it will never be
+                  //    both forward AND right = 1
+
+                  // TODO support "climbing": one wheel holds
+  
+                  motor->requestMovement(f, r);
+  
+                  client.println("OKC "+String(f)+","+String(r));
+                }
+              } else {
+                Serial.println("\nIgnoring bogus movement value(s) "+numberPart);
+                client.println("HUH?");
+              }
+            } else if (requested.startsWith("left ")
               || requested.startsWith("right ")
               || requested.startsWith("fore ")
               || requested.startsWith("back ")) {
 
-              // TODO synchronize with motor?
+              // TODO remove? Also in Motor.h
               
               float v = -100;
               if (requested.startsWith("left ")) {
                 v = parseValue(requested.substring(5));
                 motor->requestRight(v);
+                motor->requestLeft(0);
                 Serial.println("Left requested "+String(v));
               } else if (requested.startsWith("right ")) {
                 v = parseValue(requested.substring(6));
                 motor->requestLeft(v);
+                motor->requestRight(0);
                 Serial.println("Right requested "+String(v));
               } if (requested.startsWith("fore ")) {
                 Serial.println("fore "+requested.substring(5));
@@ -128,6 +162,10 @@ private:
   {
     if (!waitForRequest)
       return "";
+
+    if (client.available() == 0) {
+      return "";
+    }
 
     /* TODO require keep-alive?
     if (millis() - clientConnectTime > 2000) {
