@@ -21,6 +21,10 @@
 #include "SyncedMemoryBuffer.h"
 #include <lwip/sockets.h>
 
+// TODO remove
+const int DUMMY_BUFFER_SIZE = 1460;
+byte dummyData[DUMMY_BUFFER_SIZE];
+
 // TODO join with DriveableServer?
 class ImageServer : public WiFiServer
 {
@@ -42,6 +46,7 @@ private:
   uint32_t imageStartTime = 0;
   uint32_t semaphoreWaitStartTime = 0;
   uint16_t outCount = 0;
+  uint32_t imageWaitStartTimestamp = 0;
 
 public:
   ImageServer(int port) : WiFiServer(port)
@@ -75,9 +80,10 @@ public:
 
       if (client.connected()) {
         // TODO does this have any influence at all?
-        bool timeoutSuccess = setTimeoutMillis(300);
+        //bool timeoutSuccess = setTimeoutMillis(300);
+        client.setNoDelay(true);
     
-        Serial.print("I"+String(timeoutSuccess)+" ");
+        Serial.print("I ");//String(timeoutSuccess)+" ");
       }
     }
 
@@ -158,9 +164,19 @@ private:
     if (!buffer->hasContent())
       return;
 
-    if (!ignoreImageAge && lastTransferredTimestamp == buffer->timestamp())
+    uint32_t now = millis();
+    if (!ignoreImageAge && lastTransferredTimestamp == buffer->timestamp()) {
+      if (imageWaitStartTimestamp == 0) {
+        imageWaitStartTimestamp = now;
+      }
       return;
-    // TODO print wait time for picture?
+    }
+
+    if (!ignoreImageAge && imageWaitStartTimestamp > 0 && now - imageWaitStartTimestamp > 3000) {
+      Serial.println("\n\n!\nWaited long for new image "+String(now - imageWaitStartTimestamp)+" last transferred ts "+String(lastTransferredTimestamp));
+    }
+
+    imageWaitStartTimestamp = 0;
 
     if (semaphoreWaitStartTime == 0)
       semaphoreWaitStartTime = millis();
@@ -205,10 +221,11 @@ private:
       uint32_t blockStart = millis();
       
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
-      uint32_t copyNow = _min(2000, currentlyInBuffer - currentlyTransferred);
+      uint32_t copyNow = _min(1460, currentlyInBuffer - currentlyTransferred);
       blockCounter++;
 
       uint32_t transferredNow = client.write(bufferPointer, copyNow);
+      //uint32_t transferredNow = client.write(dummyData, copyNow);
       currentlyTransferred += transferredNow;
       
       uint32_t blockEnd = millis();
@@ -240,30 +257,29 @@ private:
       }
       
       imageCounter++;
-      //Serial.print("T"+String(currentlyTransferred)+","+String(millis() - imageStartTime));
       uint32_t totalImageTime = millis() - imageStartTime;
       float kbs = (currentlyTransferred / (totalImageTime / 1000.0f)) / 1000.0f;
       if (totalImageTime > 400) {
-        Serial.print("T"+String(totalImageTime)+"/");
+        Serial.print("T!!"+String(totalImageTime)+"/");
         Serial.print(kbs, 1);
         Serial.print(" ");
-
         outCount++;
-
-        if (outCount % 15 == 0) {
-          Serial.println();
-        }
+      } else if (kbs < 120) {
+        Serial.print("T!");
+        Serial.print(kbs, 1);
+        Serial.print(" ");
+        outCount++;
       } else {
-        Serial.print("T");
-        Serial.print(kbs, 1);
-        Serial.print(" ");
-
+        Serial.print("T ");
         outCount++;
-
-        if (outCount % 15 == 0) {
-          Serial.println();
-        }
       }
+
+      Serial.print("S "+String(millis() - buffer->timestamp())+" ");
+      
+      if (outCount % 15 == 0) {
+        Serial.println();
+      }
+        
       imageStartTime = 0;
       lastTransferredTimestamp = buffer->timestamp();
       currentlyInBuffer = 0;
@@ -294,6 +310,7 @@ private:
     }
   }
 
+  /*
   uint16_t waitForAcknowledge()
   {
     uint32_t waitForReplyStart = millis();
@@ -329,16 +346,10 @@ private:
       if (outCount % 15 == 0) {
         Serial.println();
       }
-      /*
-      Serial.print("Client did not acknowledged "+String(passed)+" ");
-      Serial.print(data1);
-      Serial.print(data2);
-      Serial.print(data3);
-      Serial.println();*/
     }
 
     return millis() - waitForReplyStart;
-  }
+  }*/
 
   String parseRequest()
   {
