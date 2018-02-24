@@ -93,6 +93,11 @@ public:
               }
         
               client.println("OKC"+String(v));
+            } else if (requested.startsWith("status")) {
+              uint16_t volt1 = analogRead(VOLTAGE);
+              delay(5);
+              uint16_t volt2 = analogRead(VOLTAGE);
+              client.println("VOLT RAW "+String(volt1)+" "+String(volt2));
             } else {
               
               client.println("HUH?");
