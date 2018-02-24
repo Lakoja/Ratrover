@@ -36,8 +36,6 @@ public:
   
   void setup()
   {
-    // TODO this could be a double buffer (or two buffers) to parallelize transfers
-    
     buffer = (byte *)malloc(BUFFER_SIZE);
     maxBufferSize = BUFFER_SIZE;
     memset(buffer, 0, BUFFER_SIZE);
@@ -60,11 +58,16 @@ public:
     return ok;
   }
 
-  void release(uint32_t dataLength = 0)
+  void release(uint32_t dataLength = 0, uint32_t timestamp = 0)
   {
     if (dataLength > 0) {
       currentContentSize = dataLength;
-      currentTimestamp = millis();
+
+      if (timestamp == 0) {
+        currentTimestamp = millis();
+      } else {
+        currentTimestamp = timestamp;
+      }
     }
 
     currentOwner = "";

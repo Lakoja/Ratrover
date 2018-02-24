@@ -31,7 +31,8 @@ const int VSCK = 18;
 const int VMISO = 19;
 const int VMOSI = 23;
 
-const int16_t OLDER_IS_TOO_OLD = 600; // only effective when idle; + capture time
+const uint16_t OLDER_IS_TOO_OLD = 800; // only effective when idle; + capture time
+const uint16_t MAX_LIVE_IMAGE_DELAY = 400;
 
 class AsyncArducam : public ArduCAM, public Task
 {
@@ -127,9 +128,8 @@ public:
         } else {
           
           // TODO use a median of capture times?
-          // TODO configure 500?
           // TODO only do frame limiting for poor wifi performance (low power)?
-          uint32_t possibleCaptureStartTime = buffer->timestamp() + 500 - lastCaptureDuration;
+          uint32_t possibleCaptureStartTime = buffer->timestamp() + MAX_LIVE_IMAGE_DELAY - lastCaptureDuration;
           uint32_t now = millis();
           if ((imageClientActive && now >= possibleCaptureStartTime) || (millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
             initiateCapture();
@@ -210,8 +210,8 @@ private:
       hasCopySemaphore = buffer->take("cam");
 
     if (!hasCopySemaphore) {
-      if (millis() - semaphoreWaitStartTime > 10000 && !writtenSemaphoreError) {
-        Serial.println("\nXXX Never got semaphore for image copy; owner "+buffer->getTaker());
+      if (millis() - semaphoreWaitStartTime > 3000 && !writtenSemaphoreError) {
+        Serial.println("Long wait for semaphore for image copy; owner "+buffer->getTaker());
         writtenSemaphoreError = true;
       }
       return;
@@ -258,13 +258,14 @@ private:
       yield();
     }
     
-    //Serial.print('F');
+    Serial.print("F ");
+    //Serial.print("F "+String(millis())+" ");
     //Serial.print("F"+String(millis() - lastCopyStart));
     // This takes roughly 30ms for 30kb data (spi 8Mhz)
       
     CS_HIGH();
     currentDataInCamera = 0;
-    buffer->release(maximumToCopy);
+    buffer->release(maximumToCopy, lastCaptureStart);
     hasCopySemaphore = false;
     copyActive = false;
   }
