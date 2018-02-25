@@ -66,7 +66,7 @@ public:
     pinMode(VCS, OUTPUT);
   
     SPI.begin(VSCK, VMISO, VMOSI, VCS);
-    SPI.setFrequency(8000000);
+    SPI.setFrequency(8000000); // TODO 16mhz produces illegal bytes?
 
     //Check if the ArduCAM SPI bus is OK
     write_reg(ARDUCHIP_TEST1, 0x55);
@@ -149,6 +149,11 @@ public:
   {
     return cameraReady;
   }
+
+  bool isIdle()
+  {
+    return !captureStarted && !copyActive;
+  }
   
 private:
   bool checkCamera()
@@ -185,7 +190,7 @@ private:
   {
     if (copyActive)
       return;
-      
+    
     captureStarted = false;
     copyActive = true;
 
@@ -260,7 +265,7 @@ private:
     
     Serial.print("F ");
     //Serial.print("F "+String(millis())+" ");
-    //Serial.print("F"+String(millis() - lastCopyStart));
+    //Serial.print("F"+String(millis() - lastCopyStart)+"/"+String(currentDataInCamera)+" ");
     // This takes roughly 30ms for 30kb data (spi 8Mhz)
       
     CS_HIGH();

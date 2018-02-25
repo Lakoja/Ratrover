@@ -33,6 +33,13 @@ const int IRLED2 = 13;
 
 const int CHANNEL = 8;
 
+// first pin must be the one for "forward"
+const uint8_t MOTOR_R1 = 33;
+const uint8_t MOTOR_R2 = 32;
+const uint8_t MOTOR_L1 = 25;
+const uint8_t MOTOR_L2 = 26;
+const uint16_t MOTOR_UMIN_MAX = 96;
+
 SyncedMemoryBuffer cameraBuffer;
 SyncedMemoryBuffer serverBuffer;
 Motor motor;
@@ -62,7 +69,7 @@ bool setupWifi()
   }*/
   
   bool b1 = WiFi.softAPConfig(IPAddress(192,168,151,1), IPAddress(192,168,151,254), IPAddress(255,255,255,0));
-  bool b2 = WiFi.softAP("Roversnail", NULL, CHANNEL); // TODO scan continuum?
+  bool b2 = WiFi.softAP("Roversnail", NULL, CHANNEL, 0, 1); // TODO scan continuum?
   delay(100);
 
   if (b1 && b2) {
@@ -91,11 +98,11 @@ void setup()
   analogReadResolution(10); // now range is 0..1023
   analogSetPinAttenuation(VOLTAGE, ADC_0db); // metering range 1.1 volts
 
-  outputPin(LED1);
-  outputPin(LED2);
+  //outputPin(LED1);
+  //outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  motor.setup();
+  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX);
   cameraBuffer.setup();
   serverBuffer.setup();
   
@@ -103,7 +110,7 @@ void setup()
     cameraValid = false;
   }
 
-  digitalWrite(LED1, HIGH);
+  //digitalWrite(LED1, HIGH);
   
   if (!setupWifi()) {
     while(1);
@@ -115,6 +122,10 @@ void setup()
     imageServer.setup(&serverBuffer);
     //digitalWrite(LED2, HIGH);
     camera.start("cam", 2, 4000);
+  } else {
+    serverBuffer.take("test");
+    serverBuffer.release(27000);
+    imageServer.setup(&serverBuffer);
   }
   digitalWrite(IRLED2, HIGH);
 
@@ -192,6 +203,8 @@ void loop()
 {
   uint32_t loopStart = millis();
 
+  bool wifiHasClient = WiFi.softAPgetStationNum() > 0;
+
   motor.drive();
 
   if (cameraValid && camera.isReady()) {
@@ -201,15 +214,17 @@ void loop()
   copyImage();
   float voltage = readVoltage();
 
-  controlServer.inform(voltage, lastVoltageRaw);
+  controlServer.inform(voltage, lastVoltageRaw, wifiHasClient);
 
-  uint32_t imgStart = millis();
-  imageServer.drive(!camera.isReady());
-  uint32_t imgEnd = millis();
-
-  if (imgEnd - imgStart > 20000) {
-    Serial.println("!! Image drive took long "+String(imgEnd-imgStart));
-  }
+  //if (camera.isIdle()) {
+    uint32_t imgStart = millis();
+    imageServer.drive(!camera.isReady(), wifiHasClient);
+    uint32_t imgEnd = millis();
+  
+    if (imgEnd - imgStart > 20000) {
+      Serial.println("!! Image drive took long "+String(imgEnd-imgStart));
+    }
+  //}
 
   int32_t sleepNow = 2 - (millis() - loopStart);
   if (sleepNow >= 0)

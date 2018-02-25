@@ -38,10 +38,15 @@ public:
     motor = m;
   }
 
-  void inform(float v, uint16_t vr)
+  void inform(float v, uint16_t vr, bool wifiClientPresent)
   {
     lastVoltage = v;
     lastVoltageRaw = vr;
+
+    if (!wifiClientPresent && client.connected()) {
+      client.stop();
+      Serial.println("Ending control connection. Wifi client lost.");
+    }
   }
 
   virtual void run()

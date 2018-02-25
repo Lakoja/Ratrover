@@ -66,8 +66,13 @@ public:
     return client.connected();
   }
   
-  void drive(bool ignoreImageAge)
+  void drive(bool ignoreImageAge, bool wifiClientPresent)
   {
+    if (!wifiClientPresent && client.connected()) {
+      client.stop();
+      Serial.println("Ending image connection. Wifi client lost.");
+    }
+    
     if (!client.connected()) {
       if (clientNowConnected) {
         stopHandling();
@@ -204,6 +209,8 @@ private:
         Serial.println("Handler found no content in buffer!!");
         return;
       }
+
+      Serial.print("t");
 
       String imageHeader = "--frame\n";
       imageHeader += "Content-Type: image/jpeg\n";

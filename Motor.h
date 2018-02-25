@@ -19,16 +19,15 @@
 
 #include <math.h>
 
-// first pin must be the one for "forward"
-const int MOTOR_R1 = 32;
-const int MOTOR_R2 = 33;
-const int MOTOR_L1 = 26;
-const int MOTOR_L2 = 25;
-
 class Motor
 {
 private:
   const float DEAD_ZONE_SPEED = 0.12; // motor doesn't move (too weak) below this
+
+  uint8_t MOTOR_R1;
+  uint8_t MOTOR_R2;
+  uint8_t MOTOR_L1;
+  uint8_t MOTOR_L2;
   
   uint32_t systemStart;
   float motorRSpeed = 0;
@@ -41,8 +40,14 @@ private:
   uint32_t lastDriveLoopTime = 0;
 
 public:
-  void setup()
+
+  void setup(uint8_t forePinRight, uint8_t backPinRight, uint8_t forePinLeft, uint8_t backPinLeft, uint16_t umin)
   {
+    MOTOR_R1 = forePinRight;
+    MOTOR_R2 = backPinRight;
+    MOTOR_L1 = forePinLeft;
+    MOTOR_L2 = backPinLeft;
+    
     uint8_t precision = 10;
     maxSpeedInt = pow(2, precision) - 1;
     
@@ -54,11 +59,13 @@ public:
     // NOTE there are groups at work here: The setting for channel 1 also resets the one for 0.
     // Some documentation would have been fine here generally...
 
-    // 168: sensible frequency for my motors (=rpm)
-    ledcSetup(0, 168, precision); // precision bits 8: means we have 0..255 as steps, 4: 0..15
-    ledcSetup(1, 168, precision);
-    ledcSetup(2, 168, precision);
-    ledcSetup(3, 168, precision);
+    // a sensible frequency for my motors
+    uint16_t maxRpm = umin * 2;
+
+    ledcSetup(0, maxRpm, precision); // precision bits 8: means we have 0..255 as steps, 4: 0..15
+    ledcSetup(1, maxRpm, precision);
+    ledcSetup(2, maxRpm, precision);
+    ledcSetup(3, maxRpm, precision);
     ledcAttachPin(MOTOR_R1, 0);
     ledcAttachPin(MOTOR_R2, 1);
     ledcAttachPin(MOTOR_L1, 2);
@@ -92,16 +99,16 @@ public:
       
       if (motorRDesireSpeed != motorRSpeed) {
         float sign = motorRDesireSpeed - motorRSpeed >= 0 ? +1 : -1;
-        if (sign < 0)
-          fromASecond /= 2;
+        //if (sign < 0)
+        //  fromASecond /= 2;
         float diff = sign * _min(abs(motorRDesireSpeed - motorRSpeed), fromASecond);
         switchMotorR(motorRSpeed + diff);
       }
 
       if (motorLDesireSpeed != motorLSpeed) {
         float sign = motorLDesireSpeed - motorLSpeed >= 0 ? +1 : -1;
-        if (sign < 0)
-          fromASecond /= 2;
+        //if (sign < 0)
+        //  fromASecond /= 2;
         float diff = sign * _min(abs(motorLDesireSpeed - motorLSpeed), fromASecond);
         switchMotorL(motorLSpeed + diff);
       }
@@ -110,7 +117,7 @@ public:
     lastDriveLoopTime = now;
   }
 
-  void requestMovement(float forward, float right, uint16_t durationMillis = 2000) {
+  void requestMovement(float forward, float right, uint16_t durationMillis = 1000) {
     // This is the only one with value range -1 .. 1
 
     float rightSpeed = forward;
@@ -128,7 +135,7 @@ public:
     requestLeft(leftSpeed, durationMillis);
   }
 
-  void requestRight(float value, uint16_t durationMillis = 2000)
+  void requestRight(float value, uint16_t durationMillis = 1000)
   {
     // TODO check for value range?
     
@@ -137,14 +144,14 @@ public:
     motorREndTime = now + durationMillis;
   }
   
-  void requestLeft(float value, uint16_t durationMillis = 2000)
+  void requestLeft(float value, uint16_t durationMillis = 1000)
   {
     uint32_t now = millis();
     motorLDesireSpeed = value;
     motorLEndTime = now + durationMillis;
   }  
   
-  void requestForward(float value, uint16_t durationMillis = 3000)
+  void requestForward(float value, uint16_t durationMillis = 1000)
   {
     uint32_t desiredEndTime = millis() + durationMillis;
     motorRDesireSpeed = value;
@@ -153,7 +160,7 @@ public:
     motorLEndTime = desiredEndTime;
   }
   
-  void requestReverse(float value, uint16_t durationMillis = 2000)
+  void requestReverse(float value, uint16_t durationMillis = 1000)
   {
     uint32_t desiredEndTime = millis() + durationMillis;
     motorRDesireSpeed = -value;
