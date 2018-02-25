@@ -43,6 +43,7 @@ bool cameraValid = true;
 uint32_t lastSuccessfulImageCopy = 0;
 uint32_t lastVoltageOut = 0;
 bool llWarning = false;
+uint16_t lastVoltageRaw = 0;
 
 bool setupWifi()
 {
@@ -86,15 +87,9 @@ void setup()
   Serial.begin(115200);
   Serial.println("Rover start!");
 
-  analogReadResolution(11); // now range is 0..2047
-  analogSetPinAttenuation(VOLTAGE, ADC_11db); // need full range for 3.3 volt
-
-  //pinMode(VOLTAGE, INPUT);
-  uint16_t volt1 = analogRead(VOLTAGE);
-  delay(10);
-  uint16_t volt2 = analogRead(VOLTAGE);
-
-  Serial.println("Voltage raw "+String(volt1)+" "+String(volt2));
+  // NOTE using anything other than 10 bit and 0 db leads to radically worse values
+  analogReadResolution(10); // now range is 0..1023
+  analogSetPinAttenuation(VOLTAGE, ADC_0db); // metering range 1.1 volts
 
   outputPin(LED1);
   outputPin(LED2);
@@ -130,6 +125,10 @@ void setup()
 
 void copyImage()
 {
+  if (!cameraValid) {
+    return;
+  }
+  
   if (cameraBuffer.timestamp() > serverBuffer.timestamp()) {
     bool cameraLock = cameraBuffer.take("main");
     bool serverLock = serverBuffer.take("main");
@@ -171,6 +170,24 @@ void copyImage()
   }
 }
 
+float readVoltage()
+{
+    lastVoltageRaw = analogRead(VOLTAGE);
+
+    float bridgeFactor = (266.0f + 80) / 80;
+    float refVoltage = 1.1f;
+    float maxValue = 1023.0f;
+    float measureVoltage = lastVoltageRaw / maxValue * refVoltage;
+    // 4.2 volts then corresponds to 0.97 volts measured
+    
+    float voltage = measureVoltage * bridgeFactor;
+
+    // Makes no sense with usb connected
+    //Serial.println("VOLT RAW "+String(volt1)+" "+String(volt2)+" => "+String(measureVoltage, 3)+","+String(voltage, 3));
+
+    return voltage;
+}
+
 void loop() 
 {
   uint32_t loopStart = millis();
@@ -182,6 +199,9 @@ void loop()
   }
 
   copyImage();
+  float voltage = readVoltage();
+
+  controlServer.inform(voltage, lastVoltageRaw);
 
   uint32_t imgStart = millis();
   imageServer.drive(!camera.isReady());
