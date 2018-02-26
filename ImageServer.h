@@ -318,7 +318,6 @@ private:
         delay(20); // give other communication a chance
       }
     } else if (!client.connected()) {
-      Serial.println("Emergency buffer release");
       buffer->release();
       hasBufferSemaphore = false;
     }

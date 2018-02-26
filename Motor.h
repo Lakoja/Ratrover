@@ -18,8 +18,9 @@
 #define __MOTOR_H__
 
 #include <math.h>
+#include "Task.h"
 
-class Motor
+class Motor: public Task
 {
 private:
   const float DEAD_ZONE_SPEED = 0.12; // motor doesn't move (too weak) below this
@@ -79,42 +80,50 @@ public:
     systemStart = millis();
   }
 
-  void drive()
+  void run()
   {
-    uint32_t now = millis();
-
-    if (lastDriveLoopTime > 0) {
-      uint16_t passed = now - lastDriveLoopTime;
-      float fromASecond = passed / 1000.0f;
-
-      if (now >= motorREndTime) {
-        motorRDesireSpeed = 0;
+    while (true) {
+      uint32_t now = millis();
+  
+      if (lastDriveLoopTime > 0) {
+        uint16_t passed = now - lastDriveLoopTime;
+        float fromASecond = passed / 1000.0f;
+  
+        if (now >= motorREndTime) {
+          motorRDesireSpeed = 0;
+        }
+  
+        if (now >= motorLEndTime) {
+          motorLDesireSpeed = 0;
+        }
+  
+        // adapt the speed slowly (full range in one second)
+        
+        if (motorRDesireSpeed != motorRSpeed) {
+          float sign = motorRDesireSpeed - motorRSpeed >= 0 ? +1 : -1;
+          //if (sign < 0)
+          //  fromASecond /= 2;
+          float diff = sign * _min(abs(motorRDesireSpeed - motorRSpeed), fromASecond);
+          switchMotorR(motorRSpeed + diff);
+        }
+  
+        if (motorLDesireSpeed != motorLSpeed) {
+          float sign = motorLDesireSpeed - motorLSpeed >= 0 ? +1 : -1;
+          //if (sign < 0)
+          //  fromASecond /= 2;
+          float diff = sign * _min(abs(motorLDesireSpeed - motorLSpeed), fromASecond);
+          switchMotorL(motorLSpeed + diff);
+        }
       }
+  
+      lastDriveLoopTime = now;
 
-      if (now >= motorLEndTime) {
-        motorLDesireSpeed = 0;
-      }
-
-      // adapt the speed slowly (full range in one second)
-      
-      if (motorRDesireSpeed != motorRSpeed) {
-        float sign = motorRDesireSpeed - motorRSpeed >= 0 ? +1 : -1;
-        //if (sign < 0)
-        //  fromASecond /= 2;
-        float diff = sign * _min(abs(motorRDesireSpeed - motorRSpeed), fromASecond);
-        switchMotorR(motorRSpeed + diff);
-      }
-
-      if (motorLDesireSpeed != motorLSpeed) {
-        float sign = motorLDesireSpeed - motorLSpeed >= 0 ? +1 : -1;
-        //if (sign < 0)
-        //  fromASecond /= 2;
-        float diff = sign * _min(abs(motorLDesireSpeed - motorLSpeed), fromASecond);
-        switchMotorL(motorLSpeed + diff);
-      }
+      int32_t sleepNow = 4 - (millis() - now);
+      if (sleepNow >= 0)
+        delay(sleepNow);
+      else
+        yield();
     }
-
-    lastDriveLoopTime = now;
   }
 
   void requestMovement(float forward, float right, uint16_t durationMillis = 1000) {
@@ -124,12 +133,6 @@ public:
     float leftSpeed = forward;
     rightSpeed -= right / 2;
     leftSpeed += right / 2;
-
-    Serial.print("M ");
-    Serial.print(rightSpeed, 1);
-    Serial.print(",");
-    Serial.print(leftSpeed, 1);
-    Serial.print(" ");
     
     requestRight(rightSpeed, durationMillis);
     requestLeft(leftSpeed, durationMillis);

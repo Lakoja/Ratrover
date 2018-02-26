@@ -83,6 +83,7 @@ void setup()
     
   digitalWrite(IRLED2, HIGH);
 
+  motor.start("motor", 5);
   controlServer.start("control", 4);
   imageServer.start("image", 3);
   
@@ -168,8 +169,6 @@ void loop()
 
   bool wifiHasClient = WiFi.softAPgetStationNum() > 0;
 
-  motor.drive();
-
   if (cameraValid && camera.isReady()) {
     camera.inform(imageServer.clientConnected());
   }
@@ -177,7 +176,6 @@ void loop()
   copyImage();
 
   controlServer.inform(wifiHasClient);
-
   imageServer.inform(wifiHasClient);
 
   int32_t sleepNow = 2 - (millis() - loopStart);
