@@ -177,11 +177,13 @@ private:
     if (captureStarted)
       return;
 
-    uint32_t t1 = millis();
-    if (xSemaphoreTake(activitySemaphore, 500 / portTICK_PERIOD_MS) != pdTRUE) {
-      uint32_t t2 = millis();
-      Serial.println("LWC "+String(t2-t1)+" ");
-      return;
+    if (activitySemaphore != NULL) {
+      uint32_t t1 = millis();
+      if (xSemaphoreTake(activitySemaphore, 500 / portTICK_PERIOD_MS) != pdTRUE) {
+        uint32_t t2 = millis();
+        Serial.println("LWC "+String(t2-t1)+" ");
+        return;
+      }
     }
 
     Serial.print("c");
@@ -282,7 +284,9 @@ private:
     hasCopySemaphore = false;
     copyActive = false;
 
-    xSemaphoreGive(activitySemaphore);
+    if (activitySemaphore != NULL) {
+      xSemaphoreGive(activitySemaphore);
+    }
   }
 };
 

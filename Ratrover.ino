@@ -54,17 +54,19 @@ void setup()
   outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX, 0.9f);
+  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX, 0.85f);
   cameraBuffer.setup();
   serverBuffer.setup();
 
-  // NOTE this breaks voltage metering on pin 27...
+  // NOTE this breaks voltage metering on pin 27 (=ADC2)...
   if (!setupWifi()) {
     while(1);
   }
   
   digitalWrite(LED1, HIGH);
 
+  // TODO / NOTE this is nasty: Camera activty gutts the Wifi transfer 
+  //   - and even when not active they must be shielded physically from each other
   SemaphoreHandle_t activitySemaphore = xSemaphoreCreateMutex();
   
   if (!camera.setup(OV2640_800x600, &cameraBuffer, activitySemaphore)) {  // OV2640_320x240, OV2640_1600x1200, 
