@@ -26,7 +26,7 @@ const int DUMMY_BUFFER_SIZE = 1460;
 byte dummyData[DUMMY_BUFFER_SIZE];
 
 // TODO join with DriveableServer?
-class ImageServer : public WiFiServer
+class ImageServer : public WiFiServer, public Task
 {
 private:
   bool clientNowConnected = false;
@@ -47,6 +47,8 @@ private:
   uint32_t semaphoreWaitStartTime = 0;
   uint16_t outCount = 0;
   uint32_t imageWaitStartTimestamp = 0;
+  bool ignoreImageAge = false;
+  bool wifiClientPresent = false;
 
 public:
   ImageServer(int port) : WiFiServer(port)
@@ -54,19 +56,40 @@ public:
     
   }
 
-  void setup(SyncedMemoryBuffer* mb)
+  void setup(SyncedMemoryBuffer* mb, bool ignoreAge)
   {
     buffer = mb;
-    
+    ignoreImageAge = ignoreAge;
     begin();
+  }
+
+  void inform(bool clientPresent)
+  {
+    wifiClientPresent = clientPresent;
   }
 
   bool clientConnected()
   {
     return client.connected();
   }
+
+  virtual void run()
+  {
+    while (true) {
+      uint32_t loopStart = millis();
+      
+      drive();
+
+      int32_t sleepNow = 6 - (millis() - loopStart);
+      if (sleepNow >= 0)
+        delay(sleepNow);
+      else
+        yield();
+    }
+  }
   
-  void drive(bool ignoreImageAge, bool wifiClientPresent)
+private:
+  void drive()
   {
     if (!wifiClientPresent && client.connected()) {
       client.stop();
@@ -75,7 +98,12 @@ public:
     
     if (!client.connected()) {
       if (clientNowConnected) {
-        stopHandling();
+        if (hasBufferSemaphore) {
+          hasBufferSemaphore = false;
+          Serial.println("Stopping connection while having lock!");
+          //buffer->release();
+        }
+        
         Serial.println("Disconnected Dr");
       }
         
@@ -104,8 +132,6 @@ public:
 
       Serial.print("Client connected. IP address: ");
       Serial.println(client.remoteIP());
-      //client.setTimeout(5);
-      //client.setNoDelay(true); // imperative for at least _some_ throughput with smaller packets (1460)
     }
 
     if (waitForRequest) {
@@ -120,7 +146,10 @@ public:
           responseHeader += "\n";
           client.print(responseHeader);
 
-          startHandling(requested);
+          imageCounter = 0;
+          currentlyInBuffer = 0;
+          currentlyTransferred = 0;
+          transferActive = true;
         } else {
           Serial.println("Ignoring request "+requested);
           
@@ -135,33 +164,13 @@ public:
       return;
 
     if (transferActive) {
-      transferBuffer(ignoreImageAge);
+      transferBuffer();
     } 
     
     // TODO use client.setTimeout?
   }
 
-private:
-  virtual void startHandling(String requested)
-  {
-    Serial.println("Starting handling");
-    imageCounter = 0;
-    currentlyInBuffer = 0;
-    currentlyTransferred = 0;
-    transferActive = true;
-  }
-
-  virtual void stopHandling()
-  {
-    if (hasBufferSemaphore) {
-      hasBufferSemaphore = false;
-      Serial.println("Stopping connection while having lock!");
-      //buffer->release();
-    }
-  }
-
-private:
-  void transferBuffer(bool ignoreImageAge)
+  void transferBuffer()
   {
     if (!transferActive)
       return;
@@ -178,7 +187,7 @@ private:
     }
 
     if (!ignoreImageAge && imageWaitStartTimestamp > 0 && now - imageWaitStartTimestamp > 3000) {
-      Serial.println("\n\n!\nWaited long for new image "+String(now - imageWaitStartTimestamp)+" last transferred ts "+String(lastTransferredTimestamp));
+      Serial.println("\n!\nWaited long for new image "+String(now - imageWaitStartTimestamp)+" last transferred ts "+String(lastTransferredTimestamp));
     }
 
     imageWaitStartTimestamp = 0;
@@ -196,8 +205,6 @@ private:
       Serial.print("W"+String(millis() - semaphoreWaitStartTime)+" ");
     semaphoreWaitStartTime = 0;
 
-    uint32_t methodStartTime = micros();
-
     if (currentlyInBuffer == 0) {
       currentlyInBuffer = buffer->contentSize();
 
@@ -210,8 +217,6 @@ private:
         return;
       }
 
-      Serial.print("t");
-
       String imageHeader = "--frame\n";
       imageHeader += "Content-Type: image/jpeg\n";
       imageHeader += "Content-Length: ";
@@ -221,15 +226,12 @@ private:
 
       imageStartTime = millis();
     }
-
-    uint16_t blockCounter = 0;
     
     while (client.connected() && currentlyTransferred < currentlyInBuffer) {
       uint32_t blockStart = millis();
       
       byte* bufferPointer = &((buffer->content())[currentlyTransferred]);
       uint32_t copyNow = _min(1460, currentlyInBuffer - currentlyTransferred);
-      blockCounter++;
 
       uint32_t transferredNow = client.write(bufferPointer, copyNow);
       //uint32_t transferredNow = client.write(dummyData, copyNow);
@@ -300,7 +302,8 @@ private:
         //Serial.println("Server has no client."); // TODO this always the case?
       }
 
-      if (imageCounter++ > 1000) {
+      uint32_t now = millis();
+      if (imageCounter++ > 5000 || now - clientConnectTime > 5L*60*1000) {
         transferActive = false;
         if (client.connected()) {
           client.flush();
@@ -308,7 +311,7 @@ private:
         }
   
         Serial.println("Stopped after "+String(imageCounter)+" images");
-        Serial.println("Total server side time: "+String(millis() - clientConnectTime)+"ms");
+        Serial.println("Total server side time: "+String(now - clientConnectTime)+"ms");
       } else {
         // TODO do more elegantly
 

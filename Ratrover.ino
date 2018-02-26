@@ -52,43 +52,6 @@ uint32_t lastVoltageOut = 0;
 bool llWarning = false;
 uint16_t lastVoltageRaw = 0;
 
-bool setupWifi()
-{
-  WiFi.mode(WIFI_AP);
-
-  /* Probably doesn't really save power...
-  esp_err_t error = esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G);
-  if (error != 0) {
-    Serial.println("Set protocol error "+String(error));
-  }*/
-
-  /* This worsens transfer abyss times
-  esp_err_t error = esp_wifi_set_max_tx_power(52); // =level 5 low; or 8, 52, 68 or 127 see esp_wifi.h
-  if (error != 0) {
-    Serial.println("Set max tx error "+String(error));
-  }*/
-  
-  bool b1 = WiFi.softAPConfig(IPAddress(192,168,151,1), IPAddress(192,168,151,254), IPAddress(255,255,255,0));
-  bool b2 = WiFi.softAP("Roversnail", NULL, CHANNEL, 0, 1); // TODO scan continuum?
-  delay(100);
-
-  if (b1 && b2) {
-    Serial.print("WiFi AP started ");
-    Serial.println(WiFi.softAPIP());
-  } else {
-    Serial.println("Could not start AP. config: "+String(b1)+" start:"+String(b2));
-    return false;
-  }
-
-  return true;
-}
-
-void outputPin(int num)
-{
-  digitalWrite(num, LOW);
-  pinMode(num, OUTPUT);
-}
-
 void setup() 
 {
   Serial.begin(115200);
@@ -98,8 +61,8 @@ void setup()
   analogReadResolution(10); // now range is 0..1023
   analogSetPinAttenuation(VOLTAGE, ADC_0db); // metering range 1.1 volts
 
-  //outputPin(LED1);
-  //outputPin(LED2);
+  outputPin(LED1);
+  outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
   motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX);
@@ -119,19 +82,47 @@ void setup()
   controlServer.begin();
 
   if (cameraValid) {
-    imageServer.setup(&serverBuffer);
-    //digitalWrite(LED2, HIGH);
+    digitalWrite(LED2, HIGH);
     camera.start("cam", 2, 4000);
   } else {
+    // empty test data
     serverBuffer.take("test");
     serverBuffer.release(27000);
-    imageServer.setup(&serverBuffer);
   }
+  imageServer.setup(&serverBuffer, !cameraValid);
+    
   digitalWrite(IRLED2, HIGH);
 
   controlServer.start("control", 4);
+  imageServer.start("image", 3);
   
   Serial.println("Waiting for connection to our webserver...");
+}
+
+void outputPin(int num)
+{
+  digitalWrite(num, LOW);
+  pinMode(num, OUTPUT);
+  digitalWrite(num, LOW);
+}
+
+bool setupWifi()
+{
+  WiFi.mode(WIFI_AP);
+  
+  bool b1 = WiFi.softAPConfig(IPAddress(192,168,151,1), IPAddress(192,168,151,254), IPAddress(255,255,255,0));
+  bool b2 = WiFi.softAP("Roversnail", NULL, CHANNEL, 0, 1); // TODO scan continuum?
+  delay(100);
+
+  if (b1 && b2) {
+    Serial.print("WiFi AP started ");
+    Serial.println(WiFi.softAPIP());
+  } else {
+    Serial.println("Could not start AP. config: "+String(b1)+" start:"+String(b2));
+    return false;
+  }
+
+  return true;
 }
 
 void copyImage()
@@ -218,7 +209,7 @@ void loop()
 
   //if (camera.isIdle()) {
     uint32_t imgStart = millis();
-    imageServer.drive(!camera.isReady(), wifiHasClient);
+    imageServer.inform(wifiHasClient);
     uint32_t imgEnd = millis();
   
     if (imgEnd - imgStart > 20000) {
