@@ -26,7 +26,7 @@ const int LED1 = 2;
 const int LED2 = 4;
 const int IRLED2 = 13;
 
-const int VOLTAGE = 27;
+const int VOLTAGE = 34;
 
 const int CHANNEL = 8;
 
@@ -206,7 +206,7 @@ void loop()
 
     // TODO remove (but voltage metering is broken on pin 27...)
     
-    //Serial.println("VOLT "+String(voltage,2)+" from raw "+String(lastVoltageRaw));
+    Serial.println("VOLT "+String(voltage,2)+" from raw "+String(lastVoltageRaw));
     lastVoltOut = loopStart;
   }
 
