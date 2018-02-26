@@ -183,6 +183,8 @@ private:
       Serial.println("LWC "+String(t2-t1)+" ");
       return;
     }
+
+    Serial.print("c");
     
     captureStarted = true;
     uint32_t now = millis();

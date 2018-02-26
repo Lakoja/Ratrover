@@ -39,10 +39,12 @@ private:
   float motorRDesireSpeed = 0;
   float motorLDesireSpeed = 0;
   uint32_t lastDriveLoopTime = 0;
+  float rightCorrection = 1;
+  float leftCorrection = 1;
 
 public:
 
-  void setup(uint8_t forePinRight, uint8_t backPinRight, uint8_t forePinLeft, uint8_t backPinLeft, uint16_t umin)
+  void setup(uint8_t forePinRight, uint8_t backPinRight, uint8_t forePinLeft, uint8_t backPinLeft, uint16_t umin, float correction = 1)
   {
     MOTOR_R1 = forePinRight;
     MOTOR_R2 = backPinRight;
@@ -76,6 +78,15 @@ public:
     ledcWrite(1, 0);
     ledcWrite(2, 0);
     ledcWrite(3, 0);
+
+    // TODO check range (~0..~2)?
+    if (correction != 1) {
+      if (correction > 1) {
+        leftCorrection = 1 - (correction - 1);
+      } else {
+        rightCorrection = correction;
+      }
+    }
 
     systemStart = millis();
   }
@@ -178,7 +189,7 @@ private:
   void switchMotorR(float speed)
   {
     if (speed != motorRSpeed) {
-      switchMotor(speed, 0, 1);
+      switchMotor(speed * rightCorrection, 0, 1);
       motorRSpeed = speed;
     }
   }
@@ -186,7 +197,7 @@ private:
   void switchMotorL(float speed)
   {
     if (speed != motorLSpeed) {
-      switchMotor(speed, 2, 3);
+      switchMotor(speed * leftCorrection, 2, 3);
       motorLSpeed = speed;
     }
   }

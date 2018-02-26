@@ -54,7 +54,7 @@ void setup()
   outputPin(LED2);
   outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX);
+  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX, 0.9f);
   cameraBuffer.setup();
   serverBuffer.setup();
 

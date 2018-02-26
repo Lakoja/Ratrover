@@ -210,6 +210,8 @@ private:
       Serial.print("W"+String(millis() - semaphoreWaitStartTime)+" ");
     semaphoreWaitStartTime = 0;
 
+    Serial.print("t");
+    
     if (currentlyInBuffer == 0) {
       currentlyInBuffer = buffer->contentSize();
 
