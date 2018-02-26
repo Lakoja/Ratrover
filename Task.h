@@ -34,7 +34,7 @@ public:
   virtual void run() = 0;
   
 protected:
-  // TODO what is the difference? Is this necessary?
+  // TODO what is the difference to delay() and yield()? Is this necessary?
   void delay(uint16_t ms)
   {
     ::vTaskDelay(ms / portTICK_PERIOD_MS);
@@ -43,6 +43,15 @@ protected:
   void yield()
   {
     taskYIELD();
+  }
+
+  void sleepAfterLoop(uint16_t maxMillis, uint32_t loopStart)
+  {
+    int32_t sleepNow = maxMillis - (millis() - loopStart);
+    if (sleepNow >= 0)
+      delay(sleepNow);
+    else
+      yield(); 
   }
 
 private:

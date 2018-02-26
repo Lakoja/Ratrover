@@ -64,8 +64,10 @@ void setup()
   }
   
   digitalWrite(LED1, HIGH);
+
+  SemaphoreHandle_t activitySemaphore = xSemaphoreCreateMutex();
   
-  if (!camera.setup(OV2640_800x600, &cameraBuffer)) {  // OV2640_320x240, OV2640_1600x1200, 
+  if (!camera.setup(OV2640_800x600, &cameraBuffer, activitySemaphore)) {  // OV2640_320x240, OV2640_1600x1200, 
     cameraValid = false;
   }
 
@@ -79,7 +81,7 @@ void setup()
     serverBuffer.take("test");
     serverBuffer.release(27000);
   }
-  imageServer.setup(&serverBuffer, !cameraValid);
+  imageServer.setup(&serverBuffer, !cameraValid, activitySemaphore);
     
   digitalWrite(IRLED2, HIGH);
 

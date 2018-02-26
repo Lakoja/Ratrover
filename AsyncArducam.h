@@ -51,15 +51,17 @@ private:
   bool writtenSemaphoreError = false;
   bool imageClientActive = false;
   SyncedMemoryBuffer *buffer;
+  SemaphoreHandle_t activitySemaphore;
   
 public:
   AsyncArducam(byte model) : ArduCAM(model, VCS)
   {
   }
   
-  bool setup(uint8_t size, SyncedMemoryBuffer* mb)
+  bool setup(uint8_t size, SyncedMemoryBuffer* mb, SemaphoreHandle_t semaphore)
   {
     buffer = mb;
+    activitySemaphore = semaphore;
     
     Wire.begin();
   
@@ -117,6 +119,8 @@ public:
         if (++ffsOnLine % 20 == 0)
           Serial.println();
       
+        captureStarted = false;
+        
         initiateCopy();
       }
       
@@ -137,11 +141,7 @@ public:
         }
       }
       
-      int32_t sleepNow = 10 - (millis() - loopStart);
-      if (sleepNow >= 0)
-        delay(sleepNow);
-      else
-        yield();
+      sleepAfterLoop(10, loopStart);
     }
   }
 
@@ -176,6 +176,13 @@ private:
   {
     if (captureStarted)
       return;
+
+    uint32_t t1 = millis();
+    if (xSemaphoreTake(activitySemaphore, 500 / portTICK_PERIOD_MS) != pdTRUE) {
+      uint32_t t2 = millis();
+      Serial.println("LWC "+String(t2-t1)+" ");
+      return;
+    }
     
     captureStarted = true;
     uint32_t now = millis();
@@ -191,7 +198,6 @@ private:
     if (copyActive)
       return;
     
-    captureStarted = false;
     copyActive = true;
 
     currentDataInCamera = 0;
@@ -273,6 +279,8 @@ private:
     buffer->release(maximumToCopy, lastCaptureStart);
     hasCopySemaphore = false;
     copyActive = false;
+
+    xSemaphoreGive(activitySemaphore);
   }
 };
 

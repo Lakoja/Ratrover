@@ -170,11 +170,7 @@ public:
         lastVoltageOut = loopStart;
       }
 
-      int32_t sleepNow = 5 - (millis() - loopStart);
-      if (sleepNow >= 0)
-        delay(sleepNow);
-      else
-        yield();
+      sleepAfterLoop(5, loopStart);
     }
   }
   

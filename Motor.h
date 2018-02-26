@@ -118,11 +118,7 @@ public:
   
       lastDriveLoopTime = now;
 
-      int32_t sleepNow = 4 - (millis() - now);
-      if (sleepNow >= 0)
-        delay(sleepNow);
-      else
-        yield();
+      sleepAfterLoop(4, now);
     }
   }
 

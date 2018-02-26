@@ -49,6 +49,7 @@ private:
   uint32_t imageWaitStartTimestamp = 0;
   bool ignoreImageAge = false;
   bool wifiClientPresent = false;
+  SemaphoreHandle_t activitySemaphore;
 
 public:
   ImageServer(int port) : WiFiServer(port)
@@ -56,10 +57,11 @@ public:
     
   }
 
-  void setup(SyncedMemoryBuffer* mb, bool ignoreAge)
+  void setup(SyncedMemoryBuffer* mb, bool ignoreAge, SemaphoreHandle_t semaphore)
   {
     buffer = mb;
     ignoreImageAge = ignoreAge;
+    activitySemaphore = semaphore;
     begin();
   }
 
@@ -80,11 +82,7 @@ public:
       
       drive();
 
-      int32_t sleepNow = 6 - (millis() - loopStart);
-      if (sleepNow >= 0)
-        delay(sleepNow);
-      else
-        yield();
+      sleepAfterLoop(6, loopStart);
     }
   }
   
@@ -201,6 +199,13 @@ private:
     if (!hasBufferSemaphore)
       return;
 
+    uint32_t t1 = millis();
+    if (xSemaphoreTake(activitySemaphore, 500 / portTICK_PERIOD_MS) != pdTRUE) {
+      uint32_t t2 = millis();
+      Serial.println("LWI "+String(t2-t1)+" ");
+      return;
+    }
+
     if (millis() - semaphoreWaitStartTime > 500)
       Serial.print("W"+String(millis() - semaphoreWaitStartTime)+" ");
     semaphoreWaitStartTime = 0;
@@ -214,6 +219,7 @@ private:
         buffer->release();
         hasBufferSemaphore = false;
         Serial.println("Handler found no content in buffer!!");
+        xSemaphoreGive(activitySemaphore);
         return;
       }
 
@@ -321,6 +327,8 @@ private:
       buffer->release();
       hasBufferSemaphore = false;
     }
+
+    xSemaphoreGive(activitySemaphore);
   }
 
   /*
