@@ -206,8 +206,8 @@ private:
     }
 
     uint16_t speedInt = round(abs(speed) * maxSpeedInt);
-    uint16_t chan1Speed = speed >= 0 ? speedInt : 0;
-    uint16_t chan2Speed = speed < 0 ? speedInt : 0;
+    uint16_t chan1Speed = _min(maxSpeedInt, speed >= 0 ? speedInt : 0);
+    uint16_t chan2Speed = _min(maxSpeedInt, speed < 0 ? speedInt : 0);
 
     if (showDebug) {
       Serial.print(chan1Speed);
