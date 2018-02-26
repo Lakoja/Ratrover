@@ -24,25 +24,28 @@
 class ContinuousControl : public WiFiServer, public Task
 {
 private:
+  const int VOLTAGE = 34;
+
   WiFiClient client;
   uint32_t clientConnectTime;
   bool clientNowConnected = false;
   bool waitForRequest = false;
   Motor* motor;
-  float lastVoltage = 0;
-  uint16_t lastVoltageRaw = 0;
+  uint16_t lastVoltageRaw = 0; // TODO remove
+  uint32_t lastVoltageOut = 0;
 
 public:
   ContinuousControl(Motor* m, int port) : WiFiServer(port)
   {
     motor = m;
+
+    // NOTE using anything other than 10 bit and 0 db leads to radically worse values
+    analogReadResolution(10); // now range is 0..1023
+    analogSetPinAttenuation(VOLTAGE, ADC_0db); // metering range 1.1 volts
   }
 
-  void inform(float v, uint16_t vr, bool wifiClientPresent)
+  void inform(bool wifiClientPresent)
   {
-    lastVoltage = v;
-    lastVoltageRaw = vr;
-
     if (!wifiClientPresent && client.connected()) {
       client.stop();
       Serial.println("Ending control connection. Wifi client lost.");
@@ -146,7 +149,8 @@ public:
         
               client.println("OKC"+String(v));
             } else if (requested.startsWith("status")) {
-              client.println("VOLT "+String(lastVoltage,2)+" from "+String(lastVoltageRaw));
+              float voltage = readVoltage();
+              client.println("VOLT "+String(voltage,2)+" from "+String(lastVoltageRaw));
             } else {
               
               client.println("HUH?");
@@ -155,6 +159,15 @@ public:
         }
         
         // TODO use client.setTimeout? Or any transmission tracking?
+      }
+
+      float voltage = readVoltage();
+      if (loopStart - lastVoltageOut > 2000) {
+    
+        // TODO remove
+        
+        //Serial.println("VOLT "+String(voltage,2)+" from raw "+String(lastVoltageRaw));
+        lastVoltageOut = loopStart;
       }
 
       int32_t sleepNow = 5 - (millis() - loopStart);
@@ -209,6 +222,22 @@ private:
     }
 
     return "";
+  }
+
+  
+  float readVoltage()
+  {
+      lastVoltageRaw = analogRead(VOLTAGE);
+  
+      float bridgeFactor = (266.0f + 80) / 80;
+      float refVoltage = 1.1f;
+      float maxValue = 1023.0f;
+      float measureVoltage = lastVoltageRaw / maxValue * refVoltage;
+      // 4.2 volts then corresponds to 0.97 volts measured
+      
+      float voltage = measureVoltage * bridgeFactor;
+  
+      return voltage;
   }
 };
 

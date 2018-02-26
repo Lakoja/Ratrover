@@ -26,8 +26,6 @@ const int LED1 = 2;
 const int LED2 = 4;
 const int IRLED2 = 13;
 
-const int VOLTAGE = 34;
-
 const int CHANNEL = 8;
 
 // first pin must be the one for "forward"
@@ -45,18 +43,12 @@ ContinuousControl controlServer(&motor, 80);
 AsyncArducam camera(OV2640);
 bool cameraValid = true;
 uint32_t lastSuccessfulImageCopy = 0;
-uint32_t lastVoltageOut = 0;
 bool llWarning = false;
-uint16_t lastVoltageRaw = 0;
 
 void setup() 
 {
   Serial.begin(115200);
   Serial.println("Rover start!");
-
-  // NOTE using anything other than 10 bit and 0 db leads to radically worse values
-  analogReadResolution(10); // now range is 0..1023
-  analogSetPinAttenuation(VOLTAGE, ADC_0db); // metering range 1.1 volts
 
   outputPin(LED1);
   outputPin(LED2);
@@ -170,23 +162,6 @@ void copyImage()
   }
 }
 
-float readVoltage()
-{
-    lastVoltageRaw = analogRead(VOLTAGE);
-
-    float bridgeFactor = (266.0f + 80) / 80;
-    float refVoltage = 1.1f;
-    float maxValue = 1023.0f;
-    float measureVoltage = lastVoltageRaw / maxValue * refVoltage;
-    // 4.2 volts then corresponds to 0.97 volts measured
-    
-    float voltage = measureVoltage * bridgeFactor;
-
-    return voltage;
-}
-
-uint32_t lastVoltOut = 0;
-
 void loop() 
 {
   uint32_t loopStart = millis();
@@ -201,16 +176,7 @@ void loop()
 
   copyImage();
 
-  float voltage = readVoltage();
-  if (loopStart - lastVoltOut > 2000) {
-
-    // TODO remove (but voltage metering is broken on pin 27...)
-    
-    Serial.println("VOLT "+String(voltage,2)+" from raw "+String(lastVoltageRaw));
-    lastVoltOut = loopStart;
-  }
-
-  controlServer.inform(voltage, lastVoltageRaw, wifiHasClient);
+  controlServer.inform(wifiHasClient);
 
   imageServer.inform(wifiHasClient);
 
