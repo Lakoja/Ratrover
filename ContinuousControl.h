@@ -53,8 +53,8 @@ public:
   {
     // TODO No works?
     // NOTE using anything other than 10 bit and 0 db leads to radically worse values
-    analogReadResolution(10); // now range is 0..1023
-    analogSetPinAttenuation(VOLTAGE, ADC_0db); // metering range 1.1 volts
+    //analogReadResolution(10); // now range is 0..1023
+    //analogSetPinAttenuation(VOLTAGE, ADC_0db); // metering range 1.1 volts
     
     while (true) {
       uint32_t loopStart = millis();
@@ -109,7 +109,7 @@ public:
                   // TODO support "climbing": one wheel holds
   
                   motor->requestMovement(f, r);
-  
+
                   client.println("OKC "+String(f)+","+String(r));
                 }
               } else {

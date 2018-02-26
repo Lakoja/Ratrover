@@ -16,11 +16,6 @@
  
 #include <WiFi.h>
 
-#include <esp_err.h>
-#include <esp_wifi.h>
-
-const int VOLTAGE = 27;
-
 #include "AsyncArducam.h"
 #include "ImageServer.h"
 #include "ContinuousControl.h"
@@ -30,6 +25,8 @@ const int VOLTAGE = 27;
 const int LED1 = 2;
 const int LED2 = 4;
 const int IRLED2 = 13;
+
+const int VOLTAGE = 27;
 
 const int CHANNEL = 8;
 
@@ -68,15 +65,16 @@ void setup()
   motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX);
   cameraBuffer.setup();
   serverBuffer.setup();
+
+  // NOTE this breaks voltage metering on pin 27...
+  if (!setupWifi()) {
+    while(1);
+  }
+  
+  digitalWrite(LED1, HIGH);
   
   if (!camera.setup(OV2640_800x600, &cameraBuffer)) {  // OV2640_320x240, OV2640_1600x1200, 
     cameraValid = false;
-  }
-
-  //digitalWrite(LED1, HIGH);
-  
-  if (!setupWifi()) {
-    while(1);
   }
 
   controlServer.begin();
@@ -184,11 +182,10 @@ float readVoltage()
     
     float voltage = measureVoltage * bridgeFactor;
 
-    // Makes no sense with usb connected
-    //Serial.println("VOLT RAW "+String(volt1)+" "+String(volt2)+" => "+String(measureVoltage, 3)+","+String(voltage, 3));
-
     return voltage;
 }
+
+uint32_t lastVoltOut = 0;
 
 void loop() 
 {
@@ -203,19 +200,19 @@ void loop()
   }
 
   copyImage();
+
   float voltage = readVoltage();
+  if (loopStart - lastVoltOut > 2000) {
+
+    // TODO remove (but voltage metering is broken on pin 27...)
+    
+    //Serial.println("VOLT "+String(voltage,2)+" from raw "+String(lastVoltageRaw));
+    lastVoltOut = loopStart;
+  }
 
   controlServer.inform(voltage, lastVoltageRaw, wifiHasClient);
 
-  //if (camera.isIdle()) {
-    uint32_t imgStart = millis();
-    imageServer.inform(wifiHasClient);
-    uint32_t imgEnd = millis();
-  
-    if (imgEnd - imgStart > 20000) {
-      Serial.println("!! Image drive took long "+String(imgEnd-imgStart));
-    }
-  //}
+  imageServer.inform(wifiHasClient);
 
   int32_t sleepNow = 2 - (millis() - loopStart);
   if (sleepNow >= 0)
