@@ -113,6 +113,7 @@ private:
         // TODO does this have any influence at all?
         //bool timeoutSuccess = setTimeoutMillis(300);
         client.setNoDelay(true);
+        //client.flush(); // Will erase the request
     
         Serial.print("I ");//String(timeoutSuccess)+" ");
       }
@@ -226,6 +227,8 @@ private:
         xSemaphoreGive(activitySemaphore);
         return;
       }
+
+      client.flush();
 
       String imageHeader = "--frame\n";
       imageHeader += "Content-Type: image/jpeg\n";
