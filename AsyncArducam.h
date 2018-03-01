@@ -273,7 +273,7 @@ private:
       yield();
     }
     
-    Serial.print("F ");
+    //Serial.print("F ");
     //Serial.print("F "+String(millis())+" ");
     //Serial.print("F"+String(millis() - lastCopyStart)+"/"+String(currentDataInCamera)+" ");
     // This takes roughly 30ms for 30kb data (spi 8Mhz)
