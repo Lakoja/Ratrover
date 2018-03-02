@@ -50,6 +50,7 @@ private:
   bool ignoreImageAge = false;
   bool wifiClientPresent = false;
   SemaphoreHandle_t activitySemaphore;
+  uint32_t lastKbpsOutput = 0;
 
 public:
   ImageServer(int port) : WiFiServer(port)
@@ -99,7 +100,7 @@ private:
         if (hasBufferSemaphore) {
           hasBufferSemaphore = false;
           Serial.println("Stopping connection while having lock!");
-          //buffer->release();
+          buffer->release();
         }
         
         Serial.println("Disconnected Dr");
@@ -221,10 +222,15 @@ private:
     semaphoreWaitStartTime = 0;
 
     if (!transferClient.connected()) {
+      // TODO improve this semaphore handing/tracking!
+      if (activitySemaphore != NULL) {
+        xSemaphoreGive(activitySemaphore);
+      }
+      
       return;
     }
 
-    Serial.print("t");
+    //Serial.print("t");
     
     if (currentlyInBuffer == 0) {
       currentlyInBuffer = buffer->contentSize();
@@ -236,12 +242,15 @@ private:
         hasBufferSemaphore = false;
         Serial.println("Handler found no content in buffer!!");
         xSemaphoreGive(activitySemaphore);
+        if (activitySemaphore != NULL) {
+          xSemaphoreGive(activitySemaphore);
+        }
         return;
       }
 
       transferClient.flush();
 
-      Serial.print("H ");
+      //Serial.print("H ");
 
       String imageHeader = "--frame\n";
       imageHeader += "Content-Type: image/jpeg\n";
@@ -280,7 +289,7 @@ private:
           // Consider this a connection break
           transferClient.flush();
           transferClient.stop();
-          // TODO do more; and on client-side
+          // TODO do more; and on client-side?
         }
         
         yield();
@@ -299,27 +308,33 @@ private:
       }
       
       imageCounter++;
-      uint32_t totalImageTime = millis() - imageStartTime;
+      uint32_t now = millis();
+      uint32_t totalImageTime = now - imageStartTime;
       float kbs = (currentlyTransferred / (totalImageTime / 1000.0f)) / 1000.0f;
       if (totalImageTime > 400) {
         Serial.print("T!!"+String(totalImageTime)+"/");
         Serial.print(kbs, 1);
         Serial.print(" ");
         outCount++;
-      } else if (kbs < 120) {
-        Serial.print("T!");
+      
+        if (outCount % 15 == 0) {
+          Serial.println();
+        }
+        lastKbpsOutput = now;
+      } else if (now - lastKbpsOutput > 1000) {
+        Serial.print("T");
         Serial.print(kbs, 1);
         Serial.print(" ");
         outCount++;
-      } else {
-        Serial.print("T ");
-        outCount++;
+      
+        if (outCount % 15 == 0) {
+          Serial.println();
+        }
+        lastKbpsOutput = now;
       }
 
-      Serial.print("S "+String(millis() - buffer->timestamp())+" ");
-      
-      if (outCount % 15 == 0) {
-        Serial.println();
+      if (random(5) == 4) {
+        Serial.print("S "+String(now - buffer->timestamp())+" ");
       }
         
       imageStartTime = 0;
@@ -335,8 +350,7 @@ private:
         //Serial.println("Server has no client."); // TODO this always the case?
       }
 
-      uint32_t now = millis();
-      if (imageCounter++ > 5000 || now - clientConnectTime > 5L*60*1000) {
+      if (imageCounter++ > 5000 || millis() - clientConnectTime > 5L*60*1000) {
         transferActive = false;
         if (transferClient.connected()) {
           transferClient.flush();

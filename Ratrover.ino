@@ -40,7 +40,7 @@ SyncedMemoryBuffer serverBuffer;
 Motor motor;
 ImageServer imageServer(81);
 ContinuousControl controlServer(&motor, 80);
-AsyncArducam camera(OV2640);
+AsyncArducam camera;
 bool cameraValid = true;
 uint32_t lastSuccessfulImageCopy = 0;
 bool llWarning = false;

@@ -31,8 +31,9 @@ const int VSCK = 18;
 const int VMISO = 19;
 const int VMOSI = 23;
 
-const uint16_t OLDER_IS_TOO_OLD = 800; // only effective when idle; + capture time
-const uint16_t MAX_LIVE_IMAGE_DELAY = 400;
+const byte model = OV2640;
+
+const uint16_t NO_CLIENT_IMAGE_TOO_OLD = 800;
 
 class AsyncArducam : public ArduCAM, public Task
 {
@@ -54,7 +55,7 @@ private:
   SemaphoreHandle_t activitySemaphore;
   
 public:
-  AsyncArducam(byte model) : ArduCAM(model, VCS)
+  AsyncArducam() : ArduCAM(model, VCS)
   {
   }
   
@@ -109,12 +110,12 @@ public:
       
       if (captureStarted && !isCaptureActive()) {
         lastCaptureDuration = millis() - lastCaptureStart;
-        if (lastCaptureDuration > 300)
+        if (lastCaptureDuration > 300) {
           Serial.print("C" + String(lastCaptureDuration) + " ");
-        else
-          Serial.print("C ");
-        
-        ffsOnLine++;
+          ffsOnLine++;
+        }
+        //else
+        //  Serial.print("C ");
     
         if (++ffsOnLine % 20 == 0)
           Serial.println();
@@ -127,17 +128,8 @@ public:
       if (copyActive) {
         copyDataToBuffer();
       } else if (!captureStarted) {
-        if (lastCaptureStart == 0) {
+        if (lastCaptureStart == 0 || imageClientActive || (millis() - lastCaptureStart > NO_CLIENT_IMAGE_TOO_OLD)) {
           initiateCapture();
-        } else {
-          
-          // TODO use a median of capture times?
-          // TODO only do frame limiting for poor wifi performance (low power)?
-          uint32_t possibleCaptureStartTime = buffer->timestamp() + MAX_LIVE_IMAGE_DELAY - lastCaptureDuration;
-          uint32_t now = millis();
-          if ((imageClientActive && now >= possibleCaptureStartTime) || (millis() - lastCaptureStart > OLDER_IS_TOO_OLD)) {
-            initiateCapture();
-          }
         }
       }
       
@@ -158,7 +150,7 @@ public:
 private:
   bool checkCamera()
   {
-    //Check if the camera module type is OV2640; TODO? model is a parameter above
+    //Check if the camera module type is OV2640
     uint8_t vid, pid;
     wrSensorReg8_8(0xff, 0x01);
     rdSensorReg8_8(OV2640_CHIPID_HIGH, &vid);
@@ -167,7 +159,6 @@ private:
       Serial.println("Can't find OV2640 module!");
       return false;
     } else {
-      Serial.println("OV2640 detected.");
       return true;
     }
   }
@@ -185,8 +176,6 @@ private:
         return;
       }
     }
-
-    Serial.print("c");
     
     captureStarted = true;
     uint32_t now = millis();
