@@ -22,21 +22,24 @@
 #include "Motor.h"
 #include "SyncedMemoryBuffer.h"
 
-const int LED1 = 2;
-const int LED2 = 4;
-const int IRLED2 = 13;
+const int LED2 = 16;
 
 const int CHANNEL = 8;
 
 // first pin must be the one for "forward"
 const uint8_t MOTOR_R1 = 33;
 const uint8_t MOTOR_R2 = 32;
+const uint8_t MOTOR_I_R = 35;
 const uint8_t MOTOR_L1 = 25;
 const uint8_t MOTOR_L2 = 26;
-const uint16_t MOTOR_UMIN_MAX = 96;
+const uint8_t MOTOR_I_L = 27;
+const uint16_t MOTOR_UMIN_MAX = 56;
+const uint16_t MOTOR_REDUCTION = 298;
 
 SyncedMemoryBuffer cameraBuffer;
 SyncedMemoryBuffer serverBuffer;
+volatile uint32_t MotorWatcher::counterR = 0;
+volatile uint32_t MotorWatcher::counterL = 0;
 Motor motor;
 ImageServer imageServer(81);
 ContinuousControl controlServer(&motor, 80);
@@ -50,11 +53,10 @@ void setup()
   Serial.begin(115200);
   Serial.println("Rover start!");
 
-  outputPin(LED1);
   outputPin(LED2);
-  outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
+  //outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_L1, MOTOR_L2, MOTOR_UMIN_MAX, 0.85f);
+  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_I_R, MOTOR_L1, MOTOR_L2, MOTOR_I_L, MOTOR_UMIN_MAX, MOTOR_REDUCTION);
   cameraBuffer.setup();
   serverBuffer.setup();
 
@@ -62,12 +64,10 @@ void setup()
   if (!setupWifi()) {
     while(1);
   }
-  
-  digitalWrite(LED1, HIGH);
 
   // TODO / NOTE this is nasty: Camera activty gutts the Wifi transfer 
   //   - and even when not active they must be shielded physically from each other
-  SemaphoreHandle_t activitySemaphore = xSemaphoreCreateMutex();
+  SemaphoreHandle_t activitySemaphore = NULL;// xSemaphoreCreateMutex();
   
   if (!camera.setup(OV2640_800x600, &cameraBuffer, activitySemaphore)) {  // OV2640_320x240, OV2640_1600x1200, 
     cameraValid = false;
@@ -84,13 +84,12 @@ void setup()
     serverBuffer.release(27000);
   }
   imageServer.setup(&serverBuffer, !cameraValid, activitySemaphore);
-    
-  digitalWrite(IRLED2, HIGH);
 
   motor.start("motor", 5);
   controlServer.start("control", 4);
   imageServer.start("image", 3);
   
+  digitalWrite(LED2, HIGH);
   Serial.println("Waiting for connection to our webserver...");
 }
 
