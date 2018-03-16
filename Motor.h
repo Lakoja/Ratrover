@@ -30,7 +30,6 @@ private:
   uint32_t lastCheckTime = 0;
   uint32_t lastCounterRight = 0;
   uint32_t lastCounterLeft = 0;
-  uint32_t lastCounterOutTime = 0;
   uint16_t motorReduction = 1;
 
   // contains summed media data of old values
@@ -56,17 +55,11 @@ public:
       uint32_t le = counterL;
 
       float partOfSecond = (now - lastCheckTime) / 1000.0f;
-      float currentTurnsRight = ((ri - lastCounterRight) / (6.0f * motorReduction)) / partOfSecond;
-      float currentTurnsLeft = ((le - lastCounterLeft) / (6.0f * motorReduction)) / partOfSecond;
+      float currentTurnsRight = 60 * (((ri - lastCounterRight) / (6.0f * motorReduction)) / partOfSecond);
+      float currentTurnsLeft = 60 * (((le - lastCounterLeft) / (6.0f * motorReduction)) / partOfSecond);
 
       lastTurnsRight = (currentTurnsRight + lastTurnsRight) / 2.0f;
       lastTurnsLeft = (currentTurnsLeft + lastTurnsLeft) / 2.0f;
-
-      if (now - lastCounterOutTime > 2000) {
-        Serial.println("Turns R "+String(currentTurnsRight) + ">" +String(lastTurnsRight) + " L "+String(currentTurnsLeft)+ ">" +String(lastTurnsLeft));
-        
-        lastCounterOutTime = now;
-      }
 
       lastCounterRight = ri;
       lastCounterLeft = le;
@@ -125,6 +118,7 @@ private:
   uint32_t motorLEndTime;
   uint32_t lastDriveLoopTime = 0;
   uint16_t motorMaxTurns = 0;
+  uint32_t lastCounterOutTime = 0;
 
 public:
   void setup(
@@ -176,6 +170,9 @@ public:
     systemStart = millis();
   }
 
+  float motorRpidCorrection = 0;
+  float motorLpidCorrection = 0;
+
   void run()
   {
     while (true) {
@@ -185,6 +182,7 @@ public:
   
       if (lastDriveLoopTime > 0) {
         uint16_t passed = now - lastDriveLoopTime;
+        // adapt the speed slowly
         float maxSpeedChange = passed / 250.0f; // slow down/speed up at most from 0 to 1 in that timespace (denominator; ie 500ms)
   
         if (now >= motorREndTime) {
@@ -194,8 +192,32 @@ public:
         if (now >= motorLEndTime) {
           motorLSpeedDesired = 0;
         }
-  
-        // adapt the speed slowly (full range in one second)
+
+        if (motorRSpeedRequested > 0 && motorLSpeedRequested > 0) {
+          // TODO different directions!? Error (integral) correction?
+
+          float requestedDifferential = motorRSpeedRequested / _max(motorLSpeedRequested, 0.01f);
+          float currentDifferential = watcher.currentTurnsRight() / _max(watcher.currentTurnsLeft(), 1);
+
+          float differDifferential = requestedDifferential / _max(currentDifferential, 0.01f);
+          if (differDifferential > 5) {
+            differDifferential = 5;
+          } else if (differDifferential < 0.2f) {
+            differDifferential = 0.2;
+          }
+
+          if (differDifferential > 1) {
+            // right is currently too weak
+            motorRpidCorrection = 0.04f * differDifferential;
+            motorLpidCorrection = 0;
+          } else if (differDifferential < 1) {
+            motorLpidCorrection = 0.2f - differDifferential / 5.0f;
+            motorRpidCorrection = 0;
+          }
+        } else {
+          motorLpidCorrection = 0;
+          motorRpidCorrection = 0;
+        }
         
         if (motorRSpeedDesired != motorRSpeedRequested) {
           float distance = motorRSpeedDesired - motorRSpeedRequested;
@@ -210,6 +232,14 @@ public:
           float diff = sign * _min(abs(distance), maxSpeedChange);
           switchMotorL(motorLSpeedRequested + diff);
         }
+      }
+
+      if (now - lastCounterOutTime > 2000) {
+        float dtL = getCurrentlyDesiredTurns(motorLSpeedCorrected);
+        float dtR = getCurrentlyDesiredTurns(motorRSpeedCorrected);
+        Serial.println("Turns R c"+String(watcher.currentTurnsRight()) + "r" +String(dtL) + "c"+ String(motorRpidCorrection)+ " L c"+String(watcher.currentTurnsLeft())+ "r" +String(dtR) + "c" + String(motorLpidCorrection));
+        
+        lastCounterOutTime = now;
       }
   
       lastDriveLoopTime = now;
@@ -273,14 +303,20 @@ private:
 
   void switchMotorR(float speed)
   {
-    float correctedSpeed = speed;
-    /*
+    float correctedSpeed = speed + motorRpidCorrection;
     if (correctedSpeed < DEAD_ZONE_SPEED_LOW) {
       correctedSpeed = 0;
     } else if (correctedSpeed > DEAD_ZONE_SPEED_HIGH) {
       correctedSpeed = DEAD_ZONE_SPEED_HIGH;
-    }*/
+    }
+    
     if (correctedSpeed != motorRSpeedCorrected) {
+       if (showDebug) {
+        Serial.print("RRa"+String(getCurrentlyDesiredTurns(speed))+"c"+String(getCurrentlyDesiredTurns(correctedSpeed))+" ");
+  
+        if (++outCounter % 20 == 0)
+          Serial.println();
+      }
       switchMotor(correctedSpeed, 0, 1);
       motorRSpeedCorrected = correctedSpeed;
     }
@@ -290,14 +326,20 @@ private:
 
   void switchMotorL(float speed)
   {
-    float correctedSpeed = speed;
-    /*
+    float correctedSpeed = speed + motorLpidCorrection;
     if (correctedSpeed < DEAD_ZONE_SPEED_LOW) {
       correctedSpeed = 0;
     } else if (correctedSpeed > DEAD_ZONE_SPEED_HIGH) {
       correctedSpeed = DEAD_ZONE_SPEED_HIGH;
-    }*/
+    }
     if (correctedSpeed != motorLSpeedCorrected) {
+      if (showDebug) {
+        Serial.print("LRa"+String(getCurrentlyDesiredTurns(speed))+"c"+String(getCurrentlyDesiredTurns(correctedSpeed))+" ");
+  
+        if (++outCounter % 20 == 0)
+          Serial.println();
+      }
+    
       switchMotor(correctedSpeed, 2, 3);
       motorLSpeedCorrected = correctedSpeed;
     }
@@ -310,13 +352,7 @@ private:
   
   bool switchMotor(float speed, uint8_t channelForward, uint8_t channelReverse)
   {
-    speed = getNonDeadSpeed(speed);
-
-    if (showDebug) {
-      Serial.print("M");
-      Serial.print(speed, 2);
-      Serial.print(", ");
-    }
+    //speed = getNonDeadSpeed(speed);
 
     uint16_t speedInt = round(abs(speed) * maxSpeedInt);
     uint16_t chan1Speed = _min(maxSpeedInt, speed >= 0 ? speedInt : 0);

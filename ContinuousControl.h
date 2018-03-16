@@ -80,9 +80,10 @@ public:
           String requested = parseRequest();
         
           if (requested.length() > 0) {
+            /*
             if (!requested.equals("status")) {
               Serial.println("Requested "+requested);
-            }
+            }*/
 
             if (requested.startsWith("move ")) {
               

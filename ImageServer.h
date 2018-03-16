@@ -259,6 +259,8 @@ private:
       imageHeader += "\n\n";
       transferClient.print(imageHeader); // Print as one block - will also work ok with setNoDelay(true)
 
+      Serial.println("Transferring "+currentlyInBuffer);
+
       imageStartTime = millis();
     }
     
