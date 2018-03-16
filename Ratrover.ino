@@ -20,6 +20,7 @@
 #include "ImageServer.h"
 #include "ContinuousControl.h"
 #include "Motor.h"
+#include "MotorWatcher.h"
 #include "SyncedMemoryBuffer.h"
 
 const int LED2 = 16;
