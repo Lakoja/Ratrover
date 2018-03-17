@@ -89,6 +89,9 @@ void setup()
   motor.start("motor", 5);
   controlServer.start("control", 4);
   imageServer.start("image", 3);
+
+  //motor.requestForward(1, 20000);
+  //motor.requestMovement(0, 1, 10000);
   
   digitalWrite(LED2, HIGH);
   Serial.println("Waiting for connection to our webserver...");

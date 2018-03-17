@@ -39,7 +39,7 @@ private:
   // set points are rpm
   double pidInputRight = 0, pidOutputRight = 0, pidSetpointRight = 0, pidInputLeft = 0, pidOutputLeft = 0, pidSetpointLeft = 0;
 
-  double p = 18, i = 70, d = 0;
+  double p = 14, i = 80, d = 0;
   PID *pidRight = NULL;
   PID *pidLeft = NULL;
   
@@ -136,21 +136,20 @@ public:
         }
       }
 
-      // TODO SetControllerDirection
-
       setPidSetpoints(motorRSpeedDesired, motorLSpeedDesired);
-      pidInputRight = watcher.currentTurnsRight();
-      pidInputLeft = watcher.currentTurnsLeft();
+      setPidInputs(watcher.currentTurnsRight(), watcher.currentTurnsLeft());
 
       bool rightValueNew = pidRight->Compute();
       bool leftValueNew = pidLeft->Compute();
 
       if (rightValueNew) {
-        switchMotorR(pidOutputRight);
+        double signR = motorRSpeedDesired >= 0 ? 1 : -1;
+        switchMotorR(signR * pidOutputRight);
       }
 
       if (leftValueNew) {
-        switchMotorL(pidOutputLeft);
+        double signL = motorLSpeedDesired >= 0 ? 1 : -1;
+        switchMotorL(signL * pidOutputLeft);
       }
 
       if (now - lastCounterOutTime > 1200) {
@@ -223,13 +222,25 @@ private:
 
   void setPidSetpoints(float desireR, float desireL)
   {
-      pidSetpointRight = getNonDeadSpeed(desireR) * motorMaxTurns;
-      pidSetpointLeft = getNonDeadSpeed(desireL) * motorMaxTurns;
+    double workingFactor = 1.15; // give PID something (a persistent error) to work with
+    double newSetpointRight = workingFactor * getNonDeadSpeed(desireR) * motorMaxTurns;
+    double newSetpointLeft = workingFactor * getNonDeadSpeed(desireL) * motorMaxTurns;
+    
+    pidSetpointRight = newSetpointRight;
+    pidSetpointLeft = newSetpointLeft;
 
 /*
       Serial.print("SP "+String(pidSetpointRight)+" ");
       if (++outCounter % 20 == 0)
           Serial.println();*/
+  }
+
+  void setPidInputs(float currentR, float currentL)
+  {
+    // Rotation values are always positive
+
+    pidInputRight = currentR;
+    pidInputLeft = currentL;
   }
 
   void switchMotorR(double pwmValue)
@@ -243,7 +254,7 @@ private:
           Serial.println();
       }*/
         
-      uint16_t speedInt = round(pwmValue);
+      int16_t speedInt = round(pwmValue);
       switchMotor(speedInt, 0, 1);
 
       currentPwmRight = pwmValue;
@@ -260,7 +271,7 @@ private:
           Serial.println();
       }
   
-      uint16_t speedInt = round(pwmValue);
+      int16_t speedInt = round(pwmValue);
       switchMotor(speedInt, 2, 3);
       
       currentPwmLeft = pwmValue;
@@ -270,7 +281,7 @@ private:
   uint16_t outCounter = 0;
   bool showDebug = true;
   
-  bool switchMotor(uint16_t speedInt, uint8_t channelForward, uint8_t channelReverse)
+  bool switchMotor(int16_t speedInt, uint8_t channelForward, uint8_t channelReverse)
   {
     uint16_t chan1Speed = _min(maxSpeedInt, speedInt >= 0 ? speedInt : 0);
     uint16_t chan2Speed = _min(maxSpeedInt, speedInt < 0 ? -speedInt : 0);
@@ -291,8 +302,7 @@ private:
   {
     double nonDeadSpeed = 0;
     if (speed != 0) {
-      double sign = speed < 0 ? -1 : +1;
-      nonDeadSpeed = sign * DEAD_ZONE_SPEED_LOW + LIVE_ZONE_RANGE * speed;
+      nonDeadSpeed = DEAD_ZONE_SPEED_LOW + LIVE_ZONE_RANGE * abs(speed);
     }
 
     return nonDeadSpeed;
