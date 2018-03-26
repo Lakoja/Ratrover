@@ -19,7 +19,7 @@
 
 #include <WiFiServer.h>
 #include "Task.h"
-#include "Motor.h"
+#include "StepperMotors.h"
 
 class ContinuousControl : public WiFiServer, public Task
 {
@@ -30,12 +30,12 @@ private:
   uint32_t clientConnectTime;
   bool clientNowConnected = false;
   bool waitForRequest = false;
-  Motor* motor;
+  StepperMotors* motor;
   uint16_t lastVoltageRaw = 0; // TODO remove
   uint32_t lastVoltageOut = 0;
 
 public:
-  ContinuousControl(Motor* m, int port) : WiFiServer(port)
+  ContinuousControl(StepperMotors* m, int port) : WiFiServer(port)
   {
     motor = m;
 

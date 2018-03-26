@@ -19,7 +19,8 @@
 #include "AsyncArducam.h"
 #include "ImageServer.h"
 #include "ContinuousControl.h"
-#include "Motor.h"
+//#include "Motor.h"
+#include "StepperMotors.h"
 #include "MotorWatcher.h"
 #include "SyncedMemoryBuffer.h"
 
@@ -37,11 +38,27 @@ const uint8_t MOTOR_I_L = 27;
 const uint16_t MOTOR_UMIN_MAX = 56;
 const uint16_t MOTOR_REDUCTION = 298;
 
+
+const uint8_t MOTOR_L_STEP = 32;
+const uint8_t MOTOR_L_DIR = 33;
+const uint8_t MOTOR_L_SLEEP = 14;
+/* New pcb
+const uint8_t MOTOR_R_STEP = 26;
+const uint8_t MOTOR_R_DIR = 27;
+const uint8_t MOTOR_R_SLEEP = 25;
+*/
+const uint8_t MOTOR_R_STEP = 25;
+const uint8_t MOTOR_R_DIR = 26;
+const uint8_t MOTOR_R_SLEEP = 27;
+const uint16_t MOTOR_MAX_RPM = 100; // for steppers this can be higher (and weaker)
+const uint16_t MOTOR_RESOLUTION = 800; // steps per rotation; this assumes a sub-step sampling (drv8834) of 4
+
+
 SyncedMemoryBuffer cameraBuffer;
 SyncedMemoryBuffer serverBuffer;
-volatile uint32_t MotorWatcher::counterR = 0;
-volatile uint32_t MotorWatcher::counterL = 0;
-Motor motor;
+//volatile uint32_t MotorWatcher::counterR = 0;
+//volatile uint32_t MotorWatcher::counterL = 0;
+StepperMotors motor;
 ImageServer imageServer(81);
 ContinuousControl controlServer(&motor, 80);
 AsyncArducam camera;
@@ -57,7 +74,10 @@ void setup()
   outputPin(LED2);
   //outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
-  motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_I_R, MOTOR_L1, MOTOR_L2, MOTOR_I_L, MOTOR_UMIN_MAX, MOTOR_REDUCTION);
+  //motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_I_R, MOTOR_L1, MOTOR_L2, MOTOR_I_L, MOTOR_UMIN_MAX, MOTOR_REDUCTION);
+
+  motor.setup(MOTOR_R_STEP, MOTOR_R_DIR, MOTOR_R_SLEEP, MOTOR_L_STEP, MOTOR_L_DIR, MOTOR_L_SLEEP, MOTOR_MAX_RPM, MOTOR_RESOLUTION);
+  
   cameraBuffer.setup();
   serverBuffer.setup();
 
@@ -90,7 +110,7 @@ void setup()
   controlServer.start("control", 4);
   imageServer.start("image", 3);
 
-  //motor.requestForward(1, 20000);
+  //motor.requestForward(0.16, 30000);
   //motor.requestMovement(0, 1, 10000);
   
   digitalWrite(LED2, HIGH);

@@ -22,6 +22,10 @@
 #include "Task.h"
 #include "MotorWatcher.h"
 
+/**
+ * This one operates two wheels. Both with the feedback of an encoder and controlled by a PID.
+ * NOTE the PID_v1 must be patched to incorporate a decaying error (line 70: outputSum = 0.9 * outputSum; // fade old values out).
+ */
 class Motor: public Task
 {
 private:
