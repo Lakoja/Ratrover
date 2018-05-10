@@ -33,8 +33,6 @@ const int VMOSI = 23;
 
 const byte model = OV2640;
 
-const uint16_t NO_CLIENT_IMAGE_TOO_OLD = 800;
-
 class AsyncArducam : public ArduCAM, public Task
 {
 private:
@@ -50,19 +48,16 @@ private:
   uint8_t ffsOnLine = 0;
   uint32_t semaphoreWaitStartTime = 0;
   bool writtenSemaphoreError = false;
-  bool imageClientActive = false;
   SyncedMemoryBuffer *buffer;
-  SemaphoreHandle_t activitySemaphore;
   
 public:
   AsyncArducam() : ArduCAM(model, VCS)
   {
   }
   
-  bool setup(uint8_t size, SyncedMemoryBuffer* mb, SemaphoreHandle_t semaphore)
+  bool setup(uint8_t size, SyncedMemoryBuffer* mb)
   {
     buffer = mb;
-    activitySemaphore = semaphore;
     
     Wire.begin();
   
@@ -94,11 +89,6 @@ public:
 
     return true;
   }
-  
-  void inform(bool clientConnected)
-  {
-    imageClientActive = clientConnected;
-  }
 
   virtual void run()
   {
@@ -112,13 +102,12 @@ public:
         lastCaptureDuration = millis() - lastCaptureStart;
         if (lastCaptureDuration > 300) {
           Serial.print("C" + String(lastCaptureDuration) + " ");
-          ffsOnLine++;
+          
+          if (++ffsOnLine % 20 == 0)
+            Serial.println();
         }
         //else
         //  Serial.print("C ");
-    
-        if (++ffsOnLine % 20 == 0)
-          Serial.println();
       
         captureStarted = false;
         
@@ -128,9 +117,7 @@ public:
       if (copyActive) {
         copyDataToBuffer();
       } else if (!captureStarted) {
-        if (lastCaptureStart == 0 || imageClientActive || (millis() - lastCaptureStart > NO_CLIENT_IMAGE_TOO_OLD)) {
-          initiateCapture();
-        }
+        initiateCapture();
       }
       
       sleepAfterLoop(10, loopStart);
@@ -167,15 +154,6 @@ private:
   {
     if (captureStarted)
       return;
-
-    if (activitySemaphore != NULL) {
-      uint32_t t1 = millis();
-      if (xSemaphoreTake(activitySemaphore, 500 / portTICK_PERIOD_MS) != pdTRUE) {
-        uint32_t t2 = millis();
-        Serial.println("LWC "+String(t2-t1)+" ");
-        return;
-      }
-    }
     
     captureStarted = true;
     uint32_t now = millis();
@@ -210,8 +188,9 @@ private:
       semaphoreWaitStartTime = millis();
     }
       
-    if (!hasCopySemaphore)
+    if (!hasCopySemaphore) {
       hasCopySemaphore = buffer->take("cam");
+    }
 
     if (!hasCopySemaphore) {
       if (millis() - semaphoreWaitStartTime > 3000 && !writtenSemaphoreError) {
@@ -272,10 +251,6 @@ private:
     buffer->release(maximumToCopy, lastCaptureStart);
     hasCopySemaphore = false;
     copyActive = false;
-
-    if (activitySemaphore != NULL) {
-      xSemaphoreGive(activitySemaphore);
-    }
   }
 };
 

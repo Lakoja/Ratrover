@@ -49,9 +49,9 @@ public:
     return maxBufferSize;
   }
 
-  bool take(String taker)
+  bool take(String taker, TickType_t waitTime = 0)
   {
-    bool ok = xSemaphoreTake(semaphore, 0) == pdTRUE;
+    bool ok = xSemaphoreTake(semaphore, waitTime) == pdTRUE;
     if (ok) {
       currentOwner = taker;
     }

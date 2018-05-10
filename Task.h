@@ -22,10 +22,12 @@ class Task
 
 private:
   xTaskHandle taskHandle;
+  bool isTasked = false;
 
 public:
   void start(String name, UBaseType_t uxPriority = 1, uint16_t stackSize = 5000)
   {
+    isTasked = true;
     // TODO what is a reasonable stack size?
     ::xTaskCreate(&runTask, name.c_str(), stackSize, this, uxPriority, &taskHandle);
     // TODO could also use ..PinnedToCore(... tskNO_AFFINITY);
@@ -37,12 +39,18 @@ protected:
   // TODO what is the difference to delay() and yield()? Is this necessary?
   void delay(uint16_t ms)
   {
-    ::vTaskDelay(ms / portTICK_PERIOD_MS);
+    if (isTasked)
+      ::vTaskDelay(ms / portTICK_PERIOD_MS);
+    else
+      delay(ms);
   }
 
   void yield()
   {
-    taskYIELD();
+    if (isTasked)
+      taskYIELD();
+    else
+      yield();
   }
 
   void sleepAfterLoop(uint16_t maxMillis, uint32_t loopStart)
