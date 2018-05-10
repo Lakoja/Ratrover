@@ -115,7 +115,7 @@ public:
       switchMotorL(lSpeed);
 
       if (now - lastCounterOutTime > 1200) {
-        Serial.println("R r"+String(rSpeed)+" L r"+String(lSpeed));
+        //Serial.println("R r"+String(rSpeed)+" L r"+String(lSpeed));
         
         lastCounterOutTime = now;
       }

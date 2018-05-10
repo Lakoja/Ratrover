@@ -71,6 +71,11 @@ public:
     wifiClientPresent = clientPresent;
   }
 
+  String getState()
+  {
+    return String(clientNowConnected) + " " + String(waitForRequest) + " " + String(transferActive) + " " + String(hasBufferSemaphore);
+  }
+  
   bool clientConnected()
   {
     return client.connected();
@@ -259,7 +264,7 @@ private:
       imageHeader += "\n\n";
       transferClient.print(imageHeader); // Print as one block - will also work ok with setNoDelay(true)
 
-      Serial.println("Transferring "+currentlyInBuffer);
+      //Serial.println("Transferring "+String(currentlyInBuffer));
 
       imageStartTime = millis();
     }
@@ -324,6 +329,7 @@ private:
         }
         lastKbpsOutput = now;
       } else if (now - lastKbpsOutput > 1000) {
+        /*
         Serial.print("T");
         Serial.print(kbs, 1);
         Serial.print(" ");
@@ -331,12 +337,12 @@ private:
       
         if (outCount % 15 == 0) {
           Serial.println();
-        }
+        }*/
         lastKbpsOutput = now;
       }
 
       if (random(5) == 4) {
-        Serial.print("S "+String(now - buffer->timestamp())+" ");
+        //Serial.print("S "+String(now - buffer->timestamp())+" ");
       }
         
       imageStartTime = 0;

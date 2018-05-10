@@ -20,6 +20,7 @@
 #include <WiFiServer.h>
 #include "Task.h"
 #include "StepperMotors.h"
+#include "ImageServer.h"
 
 class ContinuousControl : public WiFiServer, public Task
 {
@@ -33,11 +34,13 @@ private:
   StepperMotors* motor;
   uint16_t lastVoltageRaw = 0; // TODO remove
   uint32_t lastVoltageOut = 0;
+  ImageServer* imageServer;
 
 public:
-  ContinuousControl(StepperMotors* m, int port) : WiFiServer(port)
+  ContinuousControl(StepperMotors* m, ImageServer *is, int port) : WiFiServer(port)
   {
     motor = m;
+    imageServer = is;
 
     // NOTE using anything other than 10 bit and 0 db leads to radically worse values
     analogReadResolution(10); // now range is 0..1023
@@ -149,6 +152,8 @@ public:
             } else if (requested.startsWith("status")) {
               float voltage = readVoltage();
               client.println("VOLT "+String(voltage,2)+" from "+String(lastVoltageRaw));
+            } else if (requested.startsWith("image_s")) {
+              client.println("IMAGE STATUS "+imageServer->getState());
             } else {
               
               client.println("HUH?");
@@ -222,11 +227,13 @@ private:
   float readVoltage()
   {
       lastVoltageRaw = analogRead(VOLTAGE);
-  
-      float bridgeFactor = (266.0f + 80) / 80;
+
+      float bridgeFactor = (384.0f + 81) / 81; // other board: (384.0f + 81) / 81; // and another board (266.0f + 80) / 80;
       float refVoltage = 1.1f;
       float maxValue = 1023.0f;
       float measureVoltage = lastVoltageRaw / maxValue * refVoltage;
+
+      //Serial.print("V: "+String(measureVoltage)+" ");
       // 4.2 volts then corresponds to 0.97 volts measured
       
       float voltage = measureVoltage * bridgeFactor;
