@@ -151,6 +151,8 @@ bool setupWifi()
   return true;
 }
 
+bool SERVE_MULTI_IMAGES = false;
+
 void loop()
 {
   //camera.drive(&cameraBuffer);
@@ -173,15 +175,16 @@ void loop()
 
       if (requested.length() > 0) {
         waitForRequest = false;
+
+        Serial.println("Requested "+requested);
         
         if (requested.startsWith("/ ")) {
           String responseHeader = "HTTP/1.1 200 OK\n";
-          //responseHeader += "Content-Type: image/jpeg\n";
-          responseHeader += "Content-Type: multipart/x-mixed-replace; boundary=frame\n";
-          responseHeader += "\n";
+          if (SERVE_MULTI_IMAGES) {
+            responseHeader += "Content-Type: multipart/x-mixed-replace; boundary=frame\n";
+            responseHeader += "\n";
+          }
           client.print(responseHeader);
-
-          Serial.println("Serving new client the HTTP response header for"+requested);
 
           transferActive = true;
         } else {
@@ -194,10 +197,13 @@ void loop()
       }
     }
 
-    copyImage();
+    prepareImageFromCamera();
 
     if (transferActive && serverBuffer.contentSize() > 0) {
-      String imageHeader = "--frame\n";
+      String imageHeader = "";
+      if (SERVE_MULTI_IMAGES) {
+        imageHeader += "--frame\n";
+      }
       imageHeader += "Content-Type: image/jpeg\n";
       imageHeader += "Content-Length: ";
       imageHeader += String(serverBuffer.contentSize());
@@ -218,18 +224,28 @@ void loop()
       
       uint32_t now = millis();
 
-      if (now - lastTransferOutMillis >= 1000) {
-        double transferKbps = (transferredThisSecond / ((now - lastTransferOutMillis) / 1000.0)) / 1024.0;
+      if (SERVE_MULTI_IMAGES) {
+        if (now - lastTransferOutMillis >= 1000) {
+          double transferKbps = (transferredThisSecond / ((now - lastTransferOutMillis) / 1000.0)) / 1024.0;
+          Serial.println(String(transferKbps)+" "+String(now - blockStart));
+        
+          transferredThisSecond = 0;
+          lastTransferOutMillis = now;
+        }
+      } else {
+        double transferKbps = (currentlyTransferred / ((now - blockStart) / 1000.0)) / 1024.0;
         Serial.println(String(transferKbps)+" "+String(now - blockStart));
-      
-        transferredThisSecond = 0;
-        lastTransferOutMillis = now;
       }
-
-      if (now - clientConnectTime > 120000L) {
+      
+      if (SERVE_MULTI_IMAGES && now - clientConnectTime > 120000L) {
         client.stop();
         Serial.println("Test stop");
         transferActive = false;
+      }
+
+      if (!SERVE_MULTI_IMAGES) {
+        transferActive = false;
+        waitForRequest = true;
       }
     }
   }
@@ -281,7 +297,7 @@ String parseRequest()
   return "";
 }
 
-void copyImage()
+void prepareImageFromCamera()
 {
   if (!cameraValid) {
     return;
@@ -358,7 +374,7 @@ void loopComplex()
     //camera.inform(imageServer.clientConnected());
   }
 
-  copyImage();
+  copyImageComplex();
 
   //controlServer.inform(wifiHasClient);
   //imageServer.inform(wifiHasClient);
