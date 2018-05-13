@@ -21,24 +21,19 @@
 #include "SyncedMemoryBuffer.h"
 #include <lwip/sockets.h>
 
-// TODO remove
-const int DUMMY_BUFFER_SIZE = 1460;
-byte dummyData[DUMMY_BUFFER_SIZE];
+bool SERVE_MULTI_IMAGES = false;
 
-// TODO join with DriveableServer?
-class ImageServer : public WiFiServer, public Task
+class ImageServer : public WiFiServer
 {
 private:
-  bool clientNowConnected = false;
   bool waitForRequest = false;
   String currentLine = "";
   WiFiClient client;
   uint32_t clientConnectTime;
-
-  SyncedMemoryBuffer *buffer;
-  
+  bool clientNowConnected = false;
   uint16_t imageCounter = 0;
   bool transferActive = false;
+  bool waitForFirstRequest = true;
   uint32_t currentlyTransferred = 0;
   uint32_t currentlyInBuffer = 0;
   bool hasBufferSemaphore = false;
@@ -51,6 +46,10 @@ private:
   bool wifiClientPresent = false;
   SemaphoreHandle_t activitySemaphore;
   uint32_t lastKbpsOutput = 0;
+  SyncedMemoryBuffer *buffer = NULL;
+  
+  uint32_t transferredThisSecond = 0;
+  uint32_t lastTransferOutMillis = 0;
 
 public:
   ImageServer(int port) : WiFiServer(port)
@@ -58,42 +57,110 @@ public:
     setTimeout(2);
   }
 
-  void setup(SyncedMemoryBuffer* mb, bool ignoreAge, SemaphoreHandle_t semaphore)
+  void drive(SyncedMemoryBuffer* imageData)
   {
-    buffer = mb;
-    ignoreImageAge = ignoreAge;
-    activitySemaphore = semaphore;
-    begin();
-  }
+    if (!client.connected()) {
+      client = accept();
+  
+      if (client.connected()) {
+        Serial.println("Client connect");
+        clientConnectTime = millis();
+        waitForRequest = true;
+        transferActive = false;
+        currentLine = "";
+      }
+    }
+  
+    if (client.connected()) {
+      if (waitForRequest) {
+        String requested = parseRequest();
+  
+        if (requested.length() > 0) {
+          waitForRequest = false;
+          waitForFirstRequest = false;
+  
+          Serial.println("Requested "+requested);
+          
+          if (requested.startsWith("/ ")) {
+            String responseHeader = "HTTP/1.1 200 OK\n";
+            if (SERVE_MULTI_IMAGES) {
+              responseHeader += "Content-Type: multipart/x-mixed-replace; boundary=frame\n";
+              responseHeader += "\n";
+            }
+            client.print(responseHeader);
+  
+            transferActive = true;
+          } else {
+            Serial.println("Ignoring request "+requested);
+            
+            client.println("HTTP/1.1 404 Not Found");
+            client.println();
+            client.stop();
+          }
 
-  void inform(bool clientPresent)
-  {
-    wifiClientPresent = clientPresent;
+          currentLine = "";
+        }
+      }
+  
+      if (transferActive && imageData->contentSize() > 0) {
+        String imageHeader = "";
+        if (SERVE_MULTI_IMAGES) {
+          imageHeader += "--frame\n";
+        }
+        imageHeader += "Content-Type: image/jpeg\n";
+        imageHeader += "Content-Length: ";
+        imageHeader += String(imageData->contentSize());
+        imageHeader += "\n\n";
+        client.print(imageHeader); // Print as one block - will also work ok with setNoDelay(true)
+  
+        uint32_t currentlyTransferred = 0;
+        uint32_t blockStart = millis();
+  
+        while(currentlyTransferred < imageData->contentSize()) {
+          byte* bufferPointer = &((imageData->content())[currentlyTransferred]);
+          uint32_t transferredNow = client.write(bufferPointer, imageData->contentSize() - currentlyTransferred);
+          transferredThisSecond += transferredNow;
+          currentlyTransferred += transferredNow;
+        }
+        client.println();
+        client.flush();
+        
+        uint32_t now = millis();
+  
+        if (SERVE_MULTI_IMAGES) {
+          if (now - lastTransferOutMillis >= 1000) {
+            double transferKbps = (transferredThisSecond / ((now - lastTransferOutMillis) / 1000.0)) / 1024.0;
+            Serial.println(String(transferKbps)+" "+String(now - blockStart));
+          
+            transferredThisSecond = 0;
+            lastTransferOutMillis = now;
+          }
+        } else {
+          double transferKbps = (currentlyTransferred / ((now - blockStart) / 1000.0)) / 1024.0;
+          Serial.println(String(transferKbps)+" "+String(now - blockStart));
+        }
+        
+        if (SERVE_MULTI_IMAGES && now - clientConnectTime > 120000L) {
+          client.stop();
+          Serial.println("Test stop");
+          transferActive = false;
+        }
+  
+        if (!SERVE_MULTI_IMAGES) {
+          transferActive = false;
+          waitForRequest = true;
+        }
+      }
+    }
   }
 
   String getState()
   {
-    return String(clientNowConnected) + " " + String(waitForRequest) + " " + String(transferActive) + " " + String(hasBufferSemaphore);
-  }
-  
-  bool clientConnected()
-  {
-    return client.connected();
-  }
-
-  virtual void run()
-  {
-    while (true) {
-      uint32_t loopStart = millis();
-      
-      drive();
-
-      sleepAfterLoop(6, loopStart);
-    }
+    return String(client.connected()) + " " + String(waitForRequest) + " " + String(transferActive);
   }
   
 private:
-  void drive()
+  void driveComplex()
   {
     if (!wifiClientPresent && client.connected()) {
       client.stop();
@@ -172,13 +239,13 @@ private:
       return;
 
     if (transferActive) {
-      transferBuffer(client);
+      transferBufferComplex(client);
     } 
     
     // TODO use client.setTimeout?
   }
 
-  void transferBuffer(WiFiClient transferClient)
+  void transferBufferComplex(WiFiClient transferClient)
   {
     if (!transferActive)
       return;
@@ -428,20 +495,20 @@ private:
     if (!waitForRequest)
       return "";
 
-    if (millis() - clientConnectTime > 2000) {
+    if (waitForFirstRequest && millis() - clientConnectTime > 2000) {
       waitForRequest = false;
       client.stop();
       Serial.println("Waited too long for a client request. Current line content: "+currentLine);
     }
     
-    uint32_t methodStartTime = micros();
+    uint32_t methodStartTime = esp_timer_get_time();
 
     // TODO simplify time check
-    while (client.connected() && micros() - methodStartTime < 2000) {
+    while (client.connected() && esp_timer_get_time() - methodStartTime < 2000) {
       if (client.available() == 0)
         delayMicroseconds(200);
 
-      while (client.available() > 0 && micros() - methodStartTime < 2000) {
+      while (client.available() > 0 && esp_timer_get_time() - methodStartTime < 2000) {
         /* This does not read past the first line and results in a "broken connection" in Firefox
         String oneRequestLine = client.readStringUntil('\n');
         Serial.println(oneRequestLine);

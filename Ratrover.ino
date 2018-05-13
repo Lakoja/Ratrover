@@ -18,7 +18,7 @@
 #include <WiFiServer.h>
 
 #include "AsyncArducam.h"
-//#include "ImageServer.h"
+#include "ImageServer.h"
 #include "ContinuousControl.h"
 //#include "Motor.h"
 #include "StepperMotors.h"
@@ -55,24 +55,16 @@ const uint8_t MOTOR_R_SLEEP = 27;
 const uint16_t MOTOR_MAX_RPM = 100; // for steppers this can be higher (and weaker)
 const uint16_t MOTOR_RESOLUTION = 800; // steps per rotation; this assumes a sub-step sampling (drv8834) of 4
 
-
 SyncedMemoryBuffer cameraBuffer;
 SyncedMemoryBuffer serverBuffer;
 //volatile uint32_t MotorWatcher::counterR = 0;
 //volatile uint32_t MotorWatcher::counterL = 0;
 StepperMotors motor;
-//ImageServer imageServer(81);
-WiFiServer server(80);
-WiFiClient client;
+ImageServer imageServer(80);
 ContinuousControl controlServer(&motor, NULL, 81);
 AsyncArducam camera;
 bool cameraValid = true;
-bool waitForRequest = false;
-bool transferActive = false;
-uint32_t transferredThisSecond = 0;
-uint32_t lastTransferOutMillis = 0;
-uint32_t clientConnectTime = 0;
-String currentLine = "";
+
 uint32_t lastSuccessfulImageCopy = 0;
 bool llWarning = false;
 
@@ -94,8 +86,6 @@ void setup()
   if (!setupWifi()) {
     while(1);
   }
-
-  server.begin();
   
   if (!camera.setup(OV2640_800x600, &cameraBuffer)) {  // OV2640_320x240, OV2640_1600x1200, 
     cameraValid = false;
@@ -112,10 +102,10 @@ void setup()
     serverBuffer.take("test");
     serverBuffer.release(27000);
   }
-  //imageServer.setup(&serverBuffer, !cameraValid, NULL);
+  imageServer.begin();
 
   motor.start("motor", 5);
-  controlServer.start("control", 4);
+  //controlServer.start("control", 4);
   //imageServer.start("image", 3);
 
   //motor.requestForward(0.16, 30000);
@@ -151,150 +141,13 @@ bool setupWifi()
   return true;
 }
 
-bool SERVE_MULTI_IMAGES = false;
-
 void loop()
 {
   //camera.drive(&cameraBuffer);
   
-  if (!client.connected()) {
-    client = server.accept();
-
-    if (client.connected()) {
-      Serial.println("Client connect");
-      clientConnectTime = millis();
-      waitForRequest = true;
-      transferActive = false;
-      currentLine = "";
-    }
-  }
-
-  if (client.connected()) {
-    if (waitForRequest) {
-      String requested = parseRequest();
-
-      if (requested.length() > 0) {
-        waitForRequest = false;
-
-        Serial.println("Requested "+requested);
-        
-        if (requested.startsWith("/ ")) {
-          String responseHeader = "HTTP/1.1 200 OK\n";
-          if (SERVE_MULTI_IMAGES) {
-            responseHeader += "Content-Type: multipart/x-mixed-replace; boundary=frame\n";
-            responseHeader += "\n";
-          }
-          client.print(responseHeader);
-
-          transferActive = true;
-        } else {
-          Serial.println("Ignoring request "+requested);
-          
-          client.println("HTTP/1.1 404 Not Found");
-          client.println();
-          client.stop();
-        }
-      }
-    }
-
-    prepareImageFromCamera();
-
-    if (transferActive && serverBuffer.contentSize() > 0) {
-      String imageHeader = "";
-      if (SERVE_MULTI_IMAGES) {
-        imageHeader += "--frame\n";
-      }
-      imageHeader += "Content-Type: image/jpeg\n";
-      imageHeader += "Content-Length: ";
-      imageHeader += String(serverBuffer.contentSize());
-      imageHeader += "\n\n";
-      client.print(imageHeader); // Print as one block - will also work ok with setNoDelay(true)
-
-      uint32_t currentlyTransferred = 0;
-      uint32_t blockStart = millis();
-
-      while(currentlyTransferred < serverBuffer.contentSize()) {
-        byte* bufferPointer = &((serverBuffer.content())[currentlyTransferred]);
-        uint32_t transferredNow = client.write(bufferPointer, serverBuffer.contentSize() - currentlyTransferred);
-        transferredThisSecond += transferredNow;
-        currentlyTransferred += transferredNow;
-      }
-      client.println();
-      client.flush();
-      
-      uint32_t now = millis();
-
-      if (SERVE_MULTI_IMAGES) {
-        if (now - lastTransferOutMillis >= 1000) {
-          double transferKbps = (transferredThisSecond / ((now - lastTransferOutMillis) / 1000.0)) / 1024.0;
-          Serial.println(String(transferKbps)+" "+String(now - blockStart));
-        
-          transferredThisSecond = 0;
-          lastTransferOutMillis = now;
-        }
-      } else {
-        double transferKbps = (currentlyTransferred / ((now - blockStart) / 1000.0)) / 1024.0;
-        Serial.println(String(transferKbps)+" "+String(now - blockStart));
-      }
-      
-      if (SERVE_MULTI_IMAGES && now - clientConnectTime > 120000L) {
-        client.stop();
-        Serial.println("Test stop");
-        transferActive = false;
-      }
-
-      if (!SERVE_MULTI_IMAGES) {
-        transferActive = false;
-        waitForRequest = true;
-      }
-    }
-  }
-}
-
-String parseRequest()
-{
-  if (!waitForRequest)
-    return "";
-
-  if (millis() - clientConnectTime > 2000) {
-    waitForRequest = false;
-    client.stop();
-    Serial.println("Waited too long for a client request. Current line content: "+currentLine);
-  }
+  prepareImageFromCamera();
   
-  uint32_t methodStartTime = esp_timer_get_time();
-
-  // TODO simplify time check
-  while (client.connected() && esp_timer_get_time() - methodStartTime < 2000) {
-    if (client.available() == 0)
-      delayMicroseconds(200);
-
-    while (client.available() > 0 && esp_timer_get_time() - methodStartTime < 2000) {
-      /* This does not read past the first line and results in a "broken connection" in Firefox
-      String oneRequestLine = client.readStringUntil('\n');
-      Serial.println(oneRequestLine);
-      if (currentLine.length() == 0) {
-        break;
-      }*/
-      
-      char c = client.read();
-      if (c == '\n') {
-        if (currentLine.length() == 0) {
-          Serial.print("B");
-          break;
-        } else {
-          if (currentLine.startsWith("GET ")) {
-            return currentLine.substring(4);
-          }
-          currentLine = "";
-        }
-      } else if (c != '\r') {
-        currentLine += c;
-      }
-    }
-  }
-
-  return "";
+  imageServer.drive(&serverBuffer);
 }
 
 void prepareImageFromCamera()
