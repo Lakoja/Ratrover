@@ -47,11 +47,7 @@ const uint8_t MOTOR_L_SLEEP = 14;
 const uint8_t MOTOR_R_STEP = 26;
 const uint8_t MOTOR_R_DIR = 27;
 const uint8_t MOTOR_R_SLEEP = 25;
-/*
-const uint8_t MOTOR_R_STEP = 25;
-const uint8_t MOTOR_R_DIR = 26;
-const uint8_t MOTOR_R_SLEEP = 27;
-*/
+
 const uint16_t MOTOR_MAX_RPM = 100; // for steppers this can be higher (and weaker)
 const uint16_t MOTOR_RESOLUTION = 800; // steps per rotation; this assumes a sub-step sampling (drv8834) of 4
 
@@ -75,8 +71,6 @@ void setup()
   Serial.println("Rover start!");
 
   //outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
-
-  //motor.setup(MOTOR_R1, MOTOR_R2, MOTOR_I_R, MOTOR_L1, MOTOR_L2, MOTOR_I_L, MOTOR_UMIN_MAX, MOTOR_REDUCTION);
 
   motor.setup(MOTOR_R_STEP, MOTOR_R_DIR, MOTOR_R_SLEEP, MOTOR_L_STEP, MOTOR_L_DIR, MOTOR_L_SLEEP, MOTOR_MAX_RPM, MOTOR_RESOLUTION);
   
@@ -106,8 +100,6 @@ void setup()
   imageServer.begin();
 
   motor.start("motor", 5);
-  //controlServer.start("control", 4);
-  //imageServer.start("image", 3);
 
   //motor.requestForward(0.16, 30000);
   //motor.requestMovement(0, 1, 10000);
@@ -144,18 +136,9 @@ bool setupWifi()
 
 void loop()
 {
-  //camera.drive(&cameraBuffer);
-  
   prepareImageFromCamera();
   
   imageServer.drive(&serverBuffer);
-
-/*
-  uint32_t now = millis();
-  if (now - lastShowAlive > 4000) {
-    Serial.print("+");
-    lastShowAlive = now;
-  }*/
 }
 
 void prepareImageFromCamera()
@@ -175,74 +158,4 @@ void prepareImageFromCamera()
   }
 
   cameraBuffer.release();
-}
-
-
-void copyImageComplex()
-{
-  if (!cameraValid) {
-    return;
-  }
-  
-  if (cameraBuffer.timestamp() > serverBuffer.timestamp()) {
-    bool cameraLock = cameraBuffer.take("main");
-    bool serverLock = serverBuffer.take("main");
-
-    if (!cameraLock || !serverLock) {
-      uint32_t now = millis();
-      if (!llWarning && now - lastSuccessfulImageCopy > 3000) {
-        llWarning = true;
-        Serial.print("LL cannot "+String(cameraLock)+String(serverLock)+" ");
-      }
-    }
-    
-    if (cameraLock && serverLock) {
-      cameraBuffer.copyTo(&serverBuffer);
-      //Serial.print("O ");
-      
-      uint32_t now = millis();
-      if (now - lastSuccessfulImageCopy > 3000) {
-        Serial.print("LL"+String(now - lastSuccessfulImageCopy)+" ");
-        llWarning = false;
-      }
-      
-      lastSuccessfulImageCopy = now;
-    }
-
-    if (cameraLock) {
-      cameraBuffer.release();
-    }
-    
-    if (serverLock) {
-      serverBuffer.release();
-    }
-  } else {
-    uint32_t now = millis();
-    if (!llWarning && now - lastSuccessfulImageCopy > 3000) {
-      llWarning = true;
-      Serial.print("LL nothing "+String(cameraBuffer.timestamp())+"vs"+String(serverBuffer.timestamp())+" ");
-    }
-  }
-}
-
-void loopComplex() 
-{
-  uint32_t loopStart = millis();
-
-  bool wifiHasClient = WiFi.softAPgetStationNum() > 0;
-
-  if (cameraValid && camera.isReady()) {
-    //camera.inform(imageServer.clientConnected());
-  }
-
-  copyImageComplex();
-
-  //controlServer.inform(wifiHasClient);
-  //imageServer.inform(wifiHasClient);
-
-  int32_t sleepNow = 2 - (millis() - loopStart);
-  if (sleepNow >= 0)
-    delay(sleepNow);
-  else
-    yield();
 }
