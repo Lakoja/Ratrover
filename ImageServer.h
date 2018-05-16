@@ -27,6 +27,7 @@ class ImageServer : public WiFiServer
 {
 private:
   bool waitForRequest = false;
+  uint32_t waitForRequestStartTime = 0;
   String currentLine = "";
   WiFiClient client;
   uint32_t clientConnectTime;
@@ -47,6 +48,7 @@ private:
   SemaphoreHandle_t activitySemaphore;
   uint32_t lastKbpsOutput = 0;
   SyncedMemoryBuffer *buffer = NULL;
+  uint32_t transferredImageCounter = 0;
   
   uint32_t transferredThisSecond = 0;
   uint32_t lastTransferOutMillis = 0;
@@ -60,12 +62,20 @@ public:
   void drive(SyncedMemoryBuffer* imageData)
   {
     if (!client.connected()) {
+      if (clientNowConnected) {
+        Serial.println("Disconnect");
+        clientNowConnected = false;
+      }
+      
       client = accept();
   
       if (client.connected()) {
         Serial.println("Client connect");
-        clientConnectTime = millis();
+        uint32_t now = millis();
+        clientNowConnected = true;
+        clientConnectTime = now;
         waitForRequest = true;
+        waitForRequestStartTime = now;
         transferActive = false;
         currentLine = "";
       }
@@ -73,13 +83,20 @@ public:
   
     if (client.connected()) {
       if (waitForRequest) {
+        uint32_t now = millis();
+        if (waitForRequestStartTime == 0) {
+          waitForRequestStartTime = now;
+        } else if (now - waitForRequestStartTime > 5000) {
+          Serial.println("Waiting for request...");
+          waitForRequestStartTime = 0;
+        }
         String requested = parseRequest();
   
         if (requested.length() > 0) {
           waitForRequest = false;
           waitForFirstRequest = false;
   
-          Serial.println("Requested "+requested);
+          //Serial.println("Requested "+requested);
           
           if (requested.startsWith("/ ")) {
             String responseHeader = "HTTP/1.1 200 OK\n";
@@ -123,21 +140,25 @@ public:
           currentlyTransferred += transferredNow;
         }
         client.println();
-        client.flush();
+        //client.flush(); // This will eventually destroy an incoming request (?); the server is then dead (??)
+
+        transferredImageCounter++;
         
         uint32_t now = millis();
   
         if (SERVE_MULTI_IMAGES) {
           if (now - lastTransferOutMillis >= 1000) {
             double transferKbps = (transferredThisSecond / ((now - lastTransferOutMillis) / 1000.0)) / 1024.0;
-            Serial.println(String(transferKbps)+" "+String(now - blockStart));
+            Serial.println(String(transferredImageCounter)+" "+String(transferKbps)+" "+String(now - blockStart));
           
             transferredThisSecond = 0;
             lastTransferOutMillis = now;
           }
         } else {
           double transferKbps = (currentlyTransferred / ((now - blockStart) / 1000.0)) / 1024.0;
-          Serial.println(String(transferKbps)+" "+String(now - blockStart));
+          if (transferredImageCounter % 10 == 0 || transferKbps < 50) {
+            Serial.println(String(transferredImageCounter)+" "+String(transferKbps)+" "+String(now - blockStart));
+          }
         }
         
         if (SERVE_MULTI_IMAGES && now - clientConnectTime > 120000L) {
@@ -149,6 +170,7 @@ public:
         if (!SERVE_MULTI_IMAGES) {
           transferActive = false;
           waitForRequest = true;
+          waitForRequestStartTime = now;
         }
       }
     }
@@ -501,35 +523,29 @@ private:
       Serial.println("Waited too long for a client request. Current line content: "+currentLine);
     }
     
-    uint32_t methodStartTime = esp_timer_get_time();
+    uint64_t methodStartTime = esp_timer_get_time();
 
-    // TODO simplify time check
-    while (client.connected() && esp_timer_get_time() - methodStartTime < 2000) {
-      if (client.available() == 0)
-        delayMicroseconds(200);
-
-      while (client.available() > 0 && esp_timer_get_time() - methodStartTime < 2000) {
-        /* This does not read past the first line and results in a "broken connection" in Firefox
-        String oneRequestLine = client.readStringUntil('\n');
-        Serial.println(oneRequestLine);
+    while (client.available() > 0 && esp_timer_get_time() - methodStartTime < 2000) {
+      /* This does not read past the first line and results in a "broken connection" in Firefox
+      String oneRequestLine = client.readStringUntil('\n');
+      Serial.println(oneRequestLine);
+      if (currentLine.length() == 0) {
+        break;
+      }*/
+      
+      char c = client.read();
+      if (c == '\n') {
         if (currentLine.length() == 0) {
+          Serial.print("B");
           break;
-        }*/
-        
-        char c = client.read();
-        if (c == '\n') {
-          if (currentLine.length() == 0) {
-            Serial.print("B");
-            break;
-          } else {
-            if (currentLine.startsWith("GET ")) {
-              return currentLine.substring(4);
-            }
-            currentLine = "";
+        } else {
+          if (currentLine.startsWith("GET ")) {
+            return currentLine.substring(4);
           }
-        } else if (c != '\r') {
-          currentLine += c;
+          currentLine = "";
         }
+      } else if (c != '\r') {
+        currentLine += c;
       }
     }
 

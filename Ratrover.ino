@@ -67,6 +67,7 @@ bool cameraValid = true;
 
 uint32_t lastSuccessfulImageCopy = 0;
 bool llWarning = false;
+uint32_t lastShowAlive = 0;
 
 void setup() 
 {
@@ -148,6 +149,13 @@ void loop()
   prepareImageFromCamera();
   
   imageServer.drive(&serverBuffer);
+
+/*
+  uint32_t now = millis();
+  if (now - lastShowAlive > 4000) {
+    Serial.print("+");
+    lastShowAlive = now;
+  }*/
 }
 
 void prepareImageFromCamera()
