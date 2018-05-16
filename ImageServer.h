@@ -19,7 +19,7 @@
  
 #include <WiFiServer.h>
 #include "SyncedMemoryBuffer.h"
-#include <lwip/sockets.h>
+#include "ContinuousControl.h"
 
 bool SERVE_MULTI_IMAGES = false;
 
@@ -37,14 +37,17 @@ private:
   uint32_t lastTransferredTimestamp = 0;
   bool wifiClientPresent = false;
   uint32_t transferredImageCounter = 0;
+
+  ContinuousControl *control = NULL;
   
   uint32_t transferredThisSecond = 0;
   uint32_t lastTransferOutMillis = 0;
 
 public:
-  ImageServer(int port) : WiFiServer(port)
+  ImageServer(int port, ContinuousControl *cont) : WiFiServer(port)
   {
     setTimeout(2);
+    control = cont;
   }
 
   void drive(SyncedMemoryBuffer* imageData)
@@ -81,7 +84,6 @@ public:
         String requested = parseRequest();
   
         if (requested.length() > 0) {
-          waitForRequest = false;
           waitForFirstRequest = false;
   
           //Serial.println("Requested "+requested);
@@ -94,7 +96,19 @@ public:
             }
             client.print(responseHeader);
   
+            waitForRequest = false;
             transferActive = true;
+          } else if (requested.startsWith("/image_s")) {
+            client.println(getState());
+          } else if (control->supports(requested.substring(1))) {
+            String returnValue = control->handle(requested.substring(1));
+
+            if (returnValue.length() > 0) {
+              client.println(returnValue);
+              Serial.println("Showing "+returnValue);
+            } else {
+              client.println("HUH?");
+            }
           } else {
             Serial.println("Ignoring request "+requested);
             
@@ -102,8 +116,6 @@ public:
             client.println();
             client.stop();
           }
-
-          currentLine = "";
         }
       }
   
@@ -198,7 +210,9 @@ private:
           break;
         } else {
           if (currentLine.startsWith("GET ")) {
-            return currentLine.substring(4);
+            String currentRequest = currentLine.substring(4);
+            currentLine = "";
+            return currentRequest;
           }
           currentLine = "";
         }

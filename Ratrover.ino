@@ -56,8 +56,8 @@ SyncedMemoryBuffer serverBuffer;
 //volatile uint32_t MotorWatcher::counterR = 0;
 //volatile uint32_t MotorWatcher::counterL = 0;
 StepperMotors motor;
-ImageServer imageServer(80);
-ContinuousControl controlServer(&motor, NULL, 81);
+ContinuousControl control(&motor);
+ImageServer imageServer(80, &control);
 AsyncArducam camera;
 bool cameraValid = true;
 
@@ -85,8 +85,6 @@ void setup()
   if (!camera.setup(OV2640_800x600, &cameraBuffer)) {  // OV2640_320x240, OV2640_1600x1200, 
     cameraValid = false;
   }
-
-  controlServer.begin();
 
   if (cameraValid) {
     outputPin(LED2);
