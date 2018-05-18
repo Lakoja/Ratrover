@@ -120,6 +120,19 @@ public:
       }
   
       if (transferActive && imageData->contentSize() > 0) {
+        bool imageValid = lastTransferredTimestamp == 0 || imageData->timestamp() != lastTransferredTimestamp;
+
+        if (!imageValid) {
+          client.println("NOIY");
+
+          // TODO centralize/refactor - see below
+          transferActive = false;
+          waitForRequest = true;
+          waitForRequestStartTime = millis();
+
+          return;
+        }
+        
         String imageHeader = "";
         if (SERVE_MULTI_IMAGES) {
           imageHeader += "--frame\n";
@@ -140,9 +153,10 @@ public:
           currentlyTransferred += transferredNow;
         }
         client.println();
-        //client.flush(); // This will eventually destroy an incoming request (?); the server is then dead (??)
+        //client.flush(); // This will eventually destroy an incoming request; the server is then dead (??)
 
         transferredImageCounter++;
+        lastTransferredTimestamp = imageData->timestamp();
         
         uint32_t now = millis();
   

@@ -89,7 +89,7 @@ void setup()
   if (cameraValid) {
     outputPin(LED2);
     digitalWrite(LED2, HIGH);
-    camera.start("cam", 2, 4000);
+    camera.start("cam", 4, 4000);
   } else {
     // empty test data
     serverBuffer.take("test");
@@ -99,8 +99,7 @@ void setup()
 
   motor.start("motor", 5);
 
-  //motor.requestForward(0.16, 30000);
-  //motor.requestMovement(0, 1, 10000);
+  //motor.requestMovement(0.02, 0, 500);
   
   Serial.println("Waiting for connection to our webserver...");
 }
@@ -137,6 +136,12 @@ void loop()
   prepareImageFromCamera();
   
   imageServer.drive(&serverBuffer);
+
+  uint32_t now = millis();
+  if (now - lastShowAlive > 5000) {
+    Serial.print("IST "+imageServer.getState()+" ");
+    lastShowAlive = now;
+  }
 }
 
 void prepareImageFromCamera()

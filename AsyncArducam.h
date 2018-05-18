@@ -200,8 +200,10 @@ private:
       return;
     }
 
-    if (millis() - semaphoreWaitStartTime > 500)
+    if (millis() - semaphoreWaitStartTime > 500) {
       Serial.print("X"+String(millis() - semaphoreWaitStartTime)+" ");
+    }
+    
     semaphoreWaitStartTime = 0;
     writtenSemaphoreError = false;
 
@@ -237,14 +239,10 @@ private:
 
       SPI.transferBytes(bufferPointer, bufferPointer, copyNow);
       currentlyCopied += copyNow;
-      // TODO could also copy in one go now?
+
+      // Don't copy in one go (would block for ie 30ms for 30kb - SPI 8Mhz)
       yield();
     }
-    
-    //Serial.print("F ");
-    //Serial.print("F "+String(millis())+" ");
-    //Serial.print("F"+String(millis() - lastCopyStart)+"/"+String(currentDataInCamera)+" ");
-    // This takes roughly 30ms for 30kb data (spi 8Mhz)
       
     CS_HIGH();
     currentDataInCamera = 0;

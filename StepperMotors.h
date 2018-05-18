@@ -195,7 +195,7 @@ private:
       int32_t speedInt = round(pwmValue);
       ledcWriteTone(0, abs(speedInt));
 
-      digitalWrite(dirPinRight, pwmValue >= 0 ? 0 : 1);
+      digitalWrite(dirPinRight, pwmValue >= 0 ? 1 : 0);
       digitalWrite(sleepPinRight, pwmValue != 0 ? 1 : 0);
 
       currentPwmRight = pwmValue;
@@ -217,7 +217,7 @@ private:
           Serial.println();
       }
 
-      digitalWrite(dirPinLeft, pwmValue >= 0 ? 1 : 0); // inverted to right
+      digitalWrite(dirPinLeft, pwmValue >= 0 ? 0 : 1); // inverted to right
       digitalWrite(sleepPinLeft, pwmValue != 0 ? 1 : 0);
       
       currentPwmLeft = pwmValue;
