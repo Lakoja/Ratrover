@@ -35,6 +35,7 @@ private:
   uint32_t motorLEndTime;
   uint32_t lastDriveLoopTime = 0;
   uint32_t lastCounterOutTime = 0;
+  bool holding = false;
 
   uint8_t stepPinRight;
   uint8_t dirPinRight;
@@ -126,6 +127,10 @@ public:
     }
   }
 
+  void hold() {
+    holding = !holding;
+  }
+
   void requestMovement(float forward, float right, uint16_t durationMillis = 1000) {
     // This is the only one with value range -1 .. 1
 
@@ -196,7 +201,7 @@ private:
       ledcWriteTone(0, abs(speedInt));
 
       digitalWrite(dirPinRight, pwmValue >= 0 ? 1 : 0);
-      digitalWrite(sleepPinRight, pwmValue != 0 ? 1 : 0);
+      digitalWrite(sleepPinRight, holding || pwmValue != 0 ? 1 : 0);
 
       currentPwmRight = pwmValue;
     }
@@ -218,14 +223,14 @@ private:
       }
 
       digitalWrite(dirPinLeft, pwmValue >= 0 ? 0 : 1); // inverted to right
-      digitalWrite(sleepPinLeft, pwmValue != 0 ? 1 : 0);
+      digitalWrite(sleepPinLeft, holding || pwmValue != 0 ? 1 : 0);
       
       currentPwmLeft = pwmValue;
     }
   }
 
   uint16_t outCounter = 0;
-  bool showDebug = true;
+  bool showDebug = false;
 
   double getNonDeadSpeed(float speed)
   {

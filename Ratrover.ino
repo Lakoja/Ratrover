@@ -100,6 +100,7 @@ void setup()
   motor.start("motor", 5);
 
   //motor.requestMovement(0.02, 0, 500);
+  //motor.hold();
   
   Serial.println("Waiting for connection to our webserver...");
 }
@@ -131,16 +132,20 @@ bool setupWifi()
   return true;
 }
 
+bool showDebug = false;
+
 void loop()
 {
   prepareImageFromCamera();
   
   imageServer.drive(&serverBuffer);
 
-  uint32_t now = millis();
-  if (now - lastShowAlive > 5000) {
-    Serial.print("IST "+imageServer.getState()+" ");
-    lastShowAlive = now;
+  if (showDebug) {
+    uint32_t now = millis();
+    if (now - lastShowAlive > 5000) {
+      Serial.print("IST "+imageServer.getState()+" ");
+      lastShowAlive = now;
+    }
   }
 }
 

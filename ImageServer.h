@@ -62,6 +62,9 @@ public:
   
       if (client.connected()) {
         Serial.println("Client connect");
+
+        client.setNoDelay(true);
+        
         uint32_t now = millis();
         clientNowConnected = true;
         clientConnectTime = now;
@@ -105,7 +108,7 @@ public:
 
             if (returnValue.length() > 0) {
               client.println(returnValue);
-              Serial.println("Showing "+returnValue);
+              //Serial.println("Showing "+returnValue);
             } else {
               client.println("HUH?");
             }
@@ -123,6 +126,7 @@ public:
         bool imageValid = lastTransferredTimestamp == 0 || imageData->timestamp() != lastTransferredTimestamp;
 
         if (!imageValid) {
+          Serial.print("-");
           client.println("NOIY");
 
           // TODO centralize/refactor - see below
@@ -170,8 +174,12 @@ public:
           }
         } else {
           double transferKbps = (currentlyTransferred / ((now - blockStart) / 1000.0)) / 1024.0;
-          if (transferredImageCounter % 10 == 0 || transferKbps < 50) {
-            Serial.println(String(transferredImageCounter)+" "+String(transferKbps)+" "+String(now - blockStart));
+          if (transferredImageCounter % 10 == 0 || transferKbps < 100) {
+            //Serial.println(String(transferredImageCounter)+" "+String(transferKbps)+" "+String(now - blockStart));
+          }
+
+          if (transferredImageCounter % 3 == 0) {
+            Serial.println(String(now - blockStart)+" "+String(transferKbps));
           }
         }
         
