@@ -15,10 +15,10 @@
  */
  
 #include <WiFi.h>
-#include <WiFiServer.h>
 
 #include "AsyncArducam.h"
 #include "ImageServer.h"
+#include "UdpImageServer.h"
 #include "ContinuousControl.h"
 //#include "Motor.h"
 #include "StepperMotors.h"
@@ -52,14 +52,17 @@ const uint16_t MOTOR_MAX_RPM = 100; // for steppers this can be higher (and weak
 const uint16_t MOTOR_RESOLUTION = 800; // steps per rotation; this assumes a sub-step sampling (drv8834) of 4
 
 SyncedMemoryBuffer cameraBuffer;
-SyncedMemoryBuffer serverBuffer;
+SyncedMemoryBuffer serverBufferOne;
+SyncedMemoryBuffer serverBufferOther;
 //volatile uint32_t MotorWatcher::counterR = 0;
 //volatile uint32_t MotorWatcher::counterL = 0;
 StepperMotors motor;
 ContinuousControl control(&motor);
-ImageServer imageServer(80, &control);
+//ImageServer imageServer(80, &control);
+UdpImageServer imageServer(1510);
 AsyncArducam camera;
 bool cameraValid = true;
+uint8_t lastWifiClientCount = 0;
 
 uint32_t lastSuccessfulImageCopy = 0;
 bool llWarning = false;
@@ -68,14 +71,17 @@ uint32_t lastShowAlive = 0;
 void setup() 
 {
   Serial.begin(115200);
-  Serial.println("Rover start!");
+  Serial.println("Rover start! free "+String(ESP.getFreeHeap()));
 
   //outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
   motor.setup(MOTOR_R_STEP, MOTOR_R_DIR, MOTOR_R_SLEEP, MOTOR_L_STEP, MOTOR_L_DIR, MOTOR_L_SLEEP, MOTOR_MAX_RPM, MOTOR_RESOLUTION);
-  
+
+  // NOTE 50.000 bytes per buffer are too much for poor WiFi: no connections anymore
+  // NOTE 40.000 bytes per buffer are too much for poor Udp: crashes on parsePacket()
   cameraBuffer.setup();
-  serverBuffer.setup();
+  serverBufferOne.setup();
+  serverBufferOther.setup();
 
   // NOTE this breaks voltage metering on pin 27 (=ADC2)...
   if (!setupWifi()) {
@@ -90,10 +96,6 @@ void setup()
     outputPin(LED2);
     digitalWrite(LED2, HIGH);
     camera.start("cam", 4, 4000);
-  } else {
-    // empty test data
-    serverBuffer.take("test");
-    serverBuffer.release(27000);
   }
   imageServer.begin();
 
@@ -102,7 +104,7 @@ void setup()
   //motor.requestMovement(0.02, 0, 500);
   //motor.hold();
   
-  Serial.println("Waiting for connection to our webserver...");
+  Serial.println("Waiting for connections... free "+String(ESP.getFreeHeap()));
 }
 
 void outputPin(int num)
@@ -116,7 +118,7 @@ bool setupWifi()
 {
   WiFi.mode(WIFI_AP);
   
-  bool b1 = WiFi.softAP("Roversnail", NULL, CHANNEL, 0, 1); // TODO scan continuum for proper channel?
+  bool b1 = WiFi.softAP("Roversnail", NULL, CHANNEL, 0, 2); // TODO scan continuum for proper channel?
   delay(100);
   bool b2 = WiFi.softAPConfig(IPAddress(192,168,151,1), IPAddress(192,168,151,254), IPAddress(255,255,255,0));
 
@@ -136,9 +138,16 @@ bool showDebug = false;
 
 void loop()
 {
+  uint8_t wifiClientCount = WiFi.softAPgetStationNum();
+
+  if (wifiClientCount != lastWifiClientCount) {
+    Serial.println((wifiClientCount > lastWifiClientCount ? "Connect" : "Disconnect")+String(" now ")+String(wifiClientCount));
+    lastWifiClientCount = wifiClientCount;
+  }
+  
   prepareImageFromCamera();
   
-  imageServer.drive(&serverBuffer);
+  imageServer.drive(&serverBufferOne, &serverBufferOther);
 
   if (showDebug) {
     uint32_t now = millis();
@@ -159,8 +168,12 @@ void prepareImageFromCamera()
     return;
   }
   
-  if (cameraBuffer.timestamp() > serverBuffer.timestamp()) {
-    cameraBuffer.copyTo(&serverBuffer);
+  if (cameraBuffer.timestamp() > serverBufferOne.timestamp() && cameraBuffer.timestamp() > serverBufferOther.timestamp()) {
+    if (serverBufferOne.timestamp() < serverBufferOther.timestamp()) {
+      cameraBuffer.copyTo(&serverBufferOne);
+    } else {
+      cameraBuffer.copyTo(&serverBufferOther);
+    }
     
     lastSuccessfulImageCopy = millis();
   }

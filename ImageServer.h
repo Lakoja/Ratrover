@@ -63,7 +63,7 @@ public:
       if (client.connected()) {
         Serial.println("Client connect");
 
-        client.setNoDelay(true);
+        client.setNoDelay(true); // This speeds up response considerably (for smaller requests) 
         
         uint32_t now = millis();
         clientNowConnected = true;
@@ -124,6 +124,7 @@ public:
   
       if (transferActive && imageData->contentSize() > 0) {
         bool imageValid = lastTransferredTimestamp == 0 || imageData->timestamp() != lastTransferredTimestamp;
+        imageValid = true;
 
         if (!imageValid) {
           Serial.print("-");
@@ -178,7 +179,7 @@ public:
             //Serial.println(String(transferredImageCounter)+" "+String(transferKbps)+" "+String(now - blockStart));
           }
 
-          if (transferredImageCounter % 3 == 0) {
+          if (transferredImageCounter % 3 == 0 || now-blockStart > 500) {
             Serial.println(String(now - blockStart)+" "+String(transferKbps));
           }
         }

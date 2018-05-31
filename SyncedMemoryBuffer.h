@@ -17,7 +17,7 @@
 #ifndef __SYNCED_MEMORY_BUFFER_H__
 #define __SYNCED_MEMORY_BUFFER_H__
 
-const uint32_t BUFFER_SIZE = 50000;
+const uint32_t BUFFER_SIZE = 35000;
 
 class SyncedMemoryBuffer
 {
