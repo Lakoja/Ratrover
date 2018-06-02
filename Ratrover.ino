@@ -22,7 +22,6 @@
 #include "ContinuousControl.h"
 //#include "Motor.h"
 #include "StepperMotors.h"
-//#include "MotorWatcher.h"
 #include "SyncedMemoryBuffer.h"
 
 const int LED2 = 16;
@@ -59,7 +58,7 @@ SyncedMemoryBuffer serverBufferOther;
 StepperMotors motor;
 ContinuousControl control(&motor);
 //ImageServer imageServer(80, &control);
-UdpImageServer imageServer(1510);
+UdpImageServer imageServer(1510, &control);
 AsyncArducam camera;
 bool cameraValid = true;
 uint8_t lastWifiClientCount = 0;
