@@ -57,6 +57,24 @@ public:
       return;
     }
 
+    if (!imageDataOne->hasContent() && !imageDataOther->hasContent()) {
+      return;
+    }
+
+    if (imageDataOne->taker() != "server") {
+      bool hasSemaphore = imageDataOne->take("server", 5 / portTICK_PERIOD_MS);
+      if (!hasSemaphore) {
+        return;
+      }
+    }
+
+    if (imageDataOther->taker() != "server") {
+      bool hasSemaphore = imageDataOther->take("server", 5 / portTICK_PERIOD_MS);
+      if (!hasSemaphore) {
+        return;
+      }
+    }
+
     int len = parsePacket();
 
     bool packetSentAlready = false;
@@ -69,7 +87,7 @@ public:
           bool hasSecondPacket = len == 10;
           bool hasThirdPacket = len == 12;
         
-          Serial.print("Got rerequest ");
+          Serial.print("R ");
   
           uint32_t missingTimestamp = (receiveBuffer[2] << 24) & 0xff000000 | (receiveBuffer[3] << 16) & 0xff0000 | (receiveBuffer[4] << 8) & 0xff00 | receiveBuffer[5] & 0xff;
           uint16_t missing1 = (receiveBuffer[6] << 8) & 0xff00 | receiveBuffer[7] & 0xff;
@@ -86,8 +104,10 @@ public:
           
           if (imageDataOne->hasContent() && imageDataOne->timestamp() == missingTimestamp) {
             imageData = imageDataOne;
+            imageDataOther->release();
           } else if (imageDataOther->hasContent() && imageDataOther->timestamp() == missingTimestamp) {
             imageData = imageDataOther;
+            imageDataOne->release();
           }
   
           if (imageData != NULL) {
@@ -95,26 +115,26 @@ public:
             writePacket(missing1, imageData);
             // TODO
             delay(2);
-            Serial.print("Sent again "+String(missingTimestamp)+": "+String(missing1));
+            //Serial.print(""+String(missingTimestamp)+": "+String(missing1));
             if (hasSecondPacket) {
               writePacket(missing2, imageData);
               delay(2);
-              Serial.print(" "+String(missingTimestamp)+": "+String(missing2));
+              //Serial.print(", "+String(missing2));
             }
             if (hasThirdPacket) {
               writePacket(missing3, imageData);
               delay(2);
-              Serial.print(" "+String(missingTimestamp)+": "+String(missing3));
+              //Serial.print(", "+String(missing3));
             }
           } else {
-            Serial.print("No repair data buffer found "+String(missingTimestamp)+" ex "+String(imageDataOne->timestamp())+" or "+(imageDataOther->timestamp()));
+            Serial.println("No repair data buffer found "+String(missingTimestamp)+" ex "+String(imageDataOne->timestamp())+" or "+(imageDataOther->timestamp()));
           }
-  
-          Serial.println();
+
+          Serial.print(" ");
         } else if (receiveBuffer[0] == 'C' && receiveBuffer[1] == 'T') {
           String requested = String((char *)&(receiveBuffer[2]));  
         
-          Serial.println("Got control request "+requested);
+          Serial.print("CR "+requested+" ");
 
           if (control->supports(requested)) {
             String returnValue = control->handle(requested);
@@ -134,13 +154,16 @@ public:
     }
 
     if (!packetSentAlready) {
-      if (!imageDataOne->hasContent() && !imageDataOther->hasContent()) {
-        return;
-      }
-
       bool oneIsNewer = imageDataOne->hasContent() && imageDataOne->timestamp() >= imageDataOther->timestamp();
       
-      SyncedMemoryBuffer* imageData = oneIsNewer ? imageDataOne : imageDataOther;
+      SyncedMemoryBuffer* imageData = NULL; 
+      if (oneIsNewer) {
+        imageData = imageDataOne;
+        imageDataOther->release();
+      } else {
+        imageData = imageDataOther;
+        imageDataOne->release();
+      }
 
       uint32_t t1 = millis();
       if (imageData->timestamp() > lastSentTimestamp) {
@@ -162,12 +185,20 @@ public:
       
       uint32_t t2 = millis();
 
-      if (sentPackets - lastSentPacketsOut > 400) {
+      if (sentPackets - lastSentPacketsOut > 200) {
         float kbps = (imageData->contentSize() / 1024.0f) / ((t2-t1) / 1000.0f);
-        Serial.print("S"+String(t2-t1)+" ");//+"ms "+String(kbps,1)+"kbps ");
+        Serial.print("S"+String(t2-t1)+"ms "+String(kbps,1)+"kbps age "+String(t2 - imageData->timestamp()));
         Serial.println(" Sent "+String(sentPackets)+"e"+String(errorPackets)+" free "+ESP.getFreeHeap());
         lastSentPacketsOut = sentPackets;
       }
+    }
+
+    if (imageDataOne->isTaken()) {
+      imageDataOne->release();
+    }
+
+    if (imageDataOther->isTaken()) {
+      imageDataOther->release();
     }
   }
 

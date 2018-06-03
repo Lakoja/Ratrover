@@ -42,22 +42,23 @@ private:
   uint32_t lastCopyStart = 0;
   bool captureStarted = false;
   bool copyActive = false;
-  bool hasCopySemaphore = false;
   uint32_t currentDataInCamera = 0;
   uint32_t currentlyCopied = 0;
   uint8_t ffsOnLine = 0;
   uint32_t semaphoreWaitStartTime = 0;
   bool writtenSemaphoreError = false;
-  SyncedMemoryBuffer *buffer;
+  SyncedMemoryBuffer *buffer1;
+  SyncedMemoryBuffer *buffer2;
   
 public:
   AsyncArducam() : ArduCAM(model, VCS)
   {
   }
   
-  bool setup(uint8_t size, SyncedMemoryBuffer* mb)
+  bool setup(uint8_t size, SyncedMemoryBuffer* mb1, SyncedMemoryBuffer* mb2)
   {
-    buffer = mb;
+    buffer1 = mb1;
+    buffer2 = mb2;
     
     Wire.begin();
   
@@ -187,14 +188,17 @@ private:
     if (semaphoreWaitStartTime == 0) {
       semaphoreWaitStartTime = millis();
     }
-      
-    if (!hasCopySemaphore) {
-      hasCopySemaphore = buffer->take("cam");
-    }
+
+    // overwrite older one
+    bool oneIsNewer = buffer1->hasContent() && buffer1->timestamp() >= buffer2->timestamp();
+
+    SyncedMemoryBuffer* buffer = oneIsNewer ? buffer2 : buffer1;
+
+    bool hasCopySemaphore = buffer->take("cam", 20 / portTICK_PERIOD_MS);
 
     if (!hasCopySemaphore) {
-      if (millis() - semaphoreWaitStartTime > 3000 && !writtenSemaphoreError) {
-        Serial.println("Long wait for semaphore for image copy; owner "+buffer->getTaker());
+      if (millis() - semaphoreWaitStartTime > 2000 && !writtenSemaphoreError) {
+        Serial.println("Long wait for semaphore for image copy; owner "+buffer->taker());
         writtenSemaphoreError = true;
       }
       return;
@@ -219,8 +223,9 @@ private:
         return;
       }
 
-      if (currentDataInCamera > buffer->maxSize())
-        Serial.println("Image too big: "+String(currentDataInCamera));
+      if (currentDataInCamera > buffer->maxSize()) {
+        Serial.println("!! Image too big: "+String(currentDataInCamera));
+      }
       
       CS_LOW();
       set_fifo_burst();
@@ -247,7 +252,6 @@ private:
     CS_HIGH();
     currentDataInCamera = 0;
     buffer->release(maximumToCopy, lastCaptureStart);
-    hasCopySemaphore = false;
     copyActive = false;
   }
 };

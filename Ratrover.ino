@@ -50,7 +50,7 @@ const uint8_t MOTOR_R_SLEEP = 25;
 const uint16_t MOTOR_MAX_RPM = 100; // for steppers this can be higher (and weaker)
 const uint16_t MOTOR_RESOLUTION = 800; // steps per rotation; this assumes a sub-step sampling (drv8834) of 4
 
-SyncedMemoryBuffer cameraBuffer;
+//SyncedMemoryBuffer cameraBuffer;
 SyncedMemoryBuffer serverBufferOne;
 SyncedMemoryBuffer serverBufferOther;
 //volatile uint32_t MotorWatcher::counterR = 0;
@@ -76,9 +76,10 @@ void setup()
 
   motor.setup(MOTOR_R_STEP, MOTOR_R_DIR, MOTOR_R_SLEEP, MOTOR_L_STEP, MOTOR_L_DIR, MOTOR_L_SLEEP, MOTOR_MAX_RPM, MOTOR_RESOLUTION);
 
+  // NOTE for 3 buffers:
   // NOTE 50.000 bytes per buffer are too much for poor WiFi: no connections anymore
   // NOTE 40.000 bytes per buffer are too much for poor Udp: crashes on parsePacket()
-  cameraBuffer.setup();
+  //cameraBuffer.setup();
   serverBufferOne.setup();
   serverBufferOther.setup();
 
@@ -87,7 +88,7 @@ void setup()
     while(1);
   }
   
-  if (!camera.setup(OV2640_800x600, &cameraBuffer)) {  // OV2640_320x240, OV2640_1600x1200, 
+  if (!camera.setup(OV2640_800x600, &serverBufferOne, &serverBufferOther)) {  // OV2640_320x240, OV2640_1600x1200, 
     cameraValid = false;
   }
 
@@ -137,6 +138,11 @@ bool showDebug = false;
 
 void loop()
 {
+  uint32_t free = ESP.getFreeHeap();
+  if (free < 6000) {
+    Serial.print("L");
+  }
+  
   uint8_t wifiClientCount = WiFi.softAPgetStationNum();
 
   if (wifiClientCount != lastWifiClientCount) {
@@ -144,9 +150,11 @@ void loop()
     lastWifiClientCount = wifiClientCount;
   }
   
-  prepareImageFromCamera();
+  //prepareImageFromCamera();
   
   imageServer.drive(&serverBufferOne, &serverBufferOther);
+
+  // TODO emergency release if buffer is blocked somehow?
 
   if (showDebug) {
     uint32_t now = millis();
@@ -157,6 +165,7 @@ void loop()
   }
 }
 
+/*
 void prepareImageFromCamera()
 {
   if (!cameraValid) {
@@ -178,4 +187,4 @@ void prepareImageFromCamera()
   }
 
   cameraBuffer.release();
-}
+}*/

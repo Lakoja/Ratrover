@@ -28,6 +28,7 @@ private:
   uint32_t currentContentSize = 0;
   SemaphoreHandle_t semaphore;
   String currentOwner = "";
+  bool taken = false;
   
 public:
   SyncedMemoryBuffer()
@@ -53,6 +54,7 @@ public:
   {
     bool ok = xSemaphoreTake(semaphore, waitTime) == pdTRUE;
     if (ok) {
+      taken = true;
       currentOwner = taker;
     }
     return ok;
@@ -73,6 +75,7 @@ public:
     currentOwner = "";
     
     xSemaphoreGive(semaphore);
+    taken = false;
   }
 
   void copyTo(SyncedMemoryBuffer *other)
@@ -82,9 +85,14 @@ public:
     other->currentTimestamp = currentTimestamp;
   }
 
-  String getTaker()
+  String taker()
   {
     return currentOwner;
+  }
+
+  bool isTaken()
+  {
+    return taken;
   }
 
   byte* content()
