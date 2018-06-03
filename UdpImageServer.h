@@ -134,11 +134,19 @@ public:
         } else if (receiveBuffer[0] == 'C' && receiveBuffer[1] == 'T') {
           String requested = String((char *)&(receiveBuffer[2]));  
         
-          Serial.print("CR "+requested+" ");
+          //Serial.print("CR "+requested+" ");
 
           if (control->supports(requested)) {
             String returnValue = control->handle(requested);
 
+            beginPacket("192.168.151.255", udpPort);
+            print("CT");
+            print(returnValue);
+            finishPacket();
+
+            Serial.print("CR "+returnValue+" ");
+
+            packetSentAlready = true;
           } else {
             Serial.println("!!!! Did no understand control command");
           }
@@ -207,6 +215,25 @@ public:
     return String(sentPackets);
   }
 private:
+  void finishPacket()
+  {
+    int retryCounter = 0;
+    int sendSuccess = 0;
+    do {
+      if (retryCounter > 0) {
+        delayMicroseconds(500);
+      }
+      sendSuccess = endPacket();
+    } while (sendSuccess == 0 && errno == ENOMEM && ++retryCounter <= 30);
+
+    if (sendSuccess == 0) {
+      //Serial.println("Error sending packet "+String(errno));
+
+      // TODO this is only meant for image packets?
+      errorPackets++;
+    }
+  }
+
   void writePacket(uint16_t packetNumber, SyncedMemoryBuffer* imageData) 
   {
     uint16_t packetCountTotal = ceil(imageData->contentSize() / (float) DATA_SIZE);
@@ -236,20 +263,7 @@ private:
     byte* bufferPointer = &((imageData->content())[byteStart]);
     write(bufferPointer, byteCount);
 
-    int retryCounter = 0;
-    int sendSuccess = 0;
-    do {
-      if (retryCounter > 0) {
-        delayMicroseconds(500);
-      }
-      sendSuccess = endPacket();
-    } while (sendSuccess == 0 && errno == ENOMEM && ++retryCounter <= 30);
-
-    if (sendSuccess == 0) {
-      //Serial.println("Error sending packet "+String(errno));
-
-      errorPackets++;
-    }
+    finishPacket();
   
     sentPackets++;
   }
