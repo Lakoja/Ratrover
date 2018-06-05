@@ -29,6 +29,7 @@ class UdpImageServer : public WiFiUDP
 private:
   uint16_t udpPort;
   uint32_t lastSentTimestamp = 0;
+  uint32_t lastPacketMillis = 0;
   uint8_t receiveBuffer[101];
   uint32_t sentPackets = 0;
   uint32_t errorPackets = 0;
@@ -55,6 +56,12 @@ public:
   {
     if (WiFi.softAPgetStationNum() == 0) {
       return;
+    }
+
+    uint32_t now = millis();
+    if (now - lastPacketMillis > 190) {
+      // Only then stable voltage readings are possible
+      control->triggerVoltageReading();
     }
 
     if (!imageDataOne->hasContent() && !imageDataOther->hasContent()) {
@@ -179,7 +186,6 @@ public:
 
         //Serial.print("+ of"+String(imageData->contentSize())+"c"+String(packetCountTotal)+" ");
 
-  
         for (uint16_t num = 0; num < packetCountTotal; num++) {
           writePacket(num, imageData);
           // TODO return after some time?
@@ -193,7 +199,7 @@ public:
       
       uint32_t t2 = millis();
 
-      if (sentPackets - lastSentPacketsOut > 200) {
+      if (sentPackets - lastSentPacketsOut > 600) {
         float kbps = (imageData->contentSize() / 1024.0f) / ((t2-t1) / 1000.0f);
         Serial.print("S"+String(t2-t1)+"ms "+String(kbps,1)+"kbps age "+String(t2 - imageData->timestamp()));
         Serial.println(" Sent "+String(sentPackets)+"e"+String(errorPackets)+" free "+ESP.getFreeHeap());
@@ -232,6 +238,8 @@ private:
       // TODO this is only meant for image packets?
       errorPackets++;
     }
+
+    lastPacketMillis = millis();
   }
 
   void writePacket(uint16_t packetNumber, SyncedMemoryBuffer* imageData) 

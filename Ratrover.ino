@@ -66,11 +66,12 @@ uint8_t lastWifiClientCount = 0;
 uint32_t lastSuccessfulImageCopy = 0;
 bool llWarning = false;
 uint32_t lastShowAlive = 0;
+uint32_t lastShowLow = 0;
 
 void setup() 
 {
   Serial.begin(115200);
-  Serial.println("Rover start! free "+String(ESP.getFreeHeap()));
+  Serial.println("Rover start!");
 
   //outputPin(IRLED2); // TODO use an analog output? (not so big a resistor/power loss needed)
 
@@ -138,9 +139,12 @@ bool showDebug = false;
 
 void loop()
 {
-  uint32_t free = ESP.getFreeHeap();
-  if (free < 6000) {
-    Serial.print("L");
+  uint32_t now = millis();
+  
+  uint32_t freex = ESP.getFreeHeap();
+  if (freex < 6000 && now - lastShowLow > 500) {
+    Serial.print("L"+String(freex)+","+String(ESP.getFreeHeap())+" ");
+    lastShowLow = now;
   }
   
   uint8_t wifiClientCount = WiFi.softAPgetStationNum();
@@ -157,11 +161,18 @@ void loop()
   // TODO emergency release if buffer is blocked somehow?
 
   if (showDebug) {
-    uint32_t now = millis();
     if (now - lastShowAlive > 5000) {
       Serial.print("IST "+imageServer.getState()+" ");
       lastShowAlive = now;
     }
+  }
+
+  uint16_t passed = millis() - now;
+
+  if (passed < 5) {
+    delay(5 - passed);
+  } else {
+    yield();
   }
 }
 

@@ -25,13 +25,17 @@ private:
   const int VOLTAGE_PIN = 34;
 
   StepperMotors* motor;
-  uint16_t lastVoltageRaw = 0; // TODO remove
-  uint32_t lastVoltageOut = 0;
+
+  uint32_t lastVoltageReadMillis = 0;
+  float lastReadVoltage = 0;
+  uint16_t lastVoltageRaw = 0;
 
 public:
   ContinuousControl(StepperMotors* m)
   {
     motor = m;
+
+    // TODO adcAttachPin()? pinMode(,INPUT)?
 
     // NOTE using anything other than 10 bit and 0 db leads to radically worse values
     analogReadResolution(10); // now range is 0..1023
@@ -109,12 +113,20 @@ public:
 
       return "OKC"+String(v);
     } else if (requested.startsWith("status")) {
-      float voltage = readVoltage();
+      float voltage = lastReadVoltage;
+      if (lastVoltageReadMillis == 0 || millis() - lastVoltageReadMillis > 1000) {
+        voltage = readVoltage();
+      }
       
       return "VOLT "+String(voltage,2)+" from "+String(lastVoltageRaw);
     } else {
       return "";
     }
+  }
+
+  void triggerVoltageReading()
+  {
+    readVoltage();
   }
 
 private:
@@ -126,19 +138,21 @@ private:
   
   float readVoltage()
   {
-      lastVoltageRaw = analogRead(VOLTAGE_PIN);
+    lastVoltageReadMillis = millis();
+    
+    lastVoltageRaw = analogRead(VOLTAGE_PIN);
 
-      float bridgeFactor = (384.0f + 81) / 81; // another board (266.0f + 80) / 80;
-      float refVoltage = 1.1f;
-      float maxValue = 1023.0f;
-      float measureVoltage = lastVoltageRaw / maxValue * refVoltage;
+    float bridgeFactor = (370.0f + 82) / 82;//(384.0f + 81) / 81; // another board (266.0f + 80) / 80;
+    float refVoltage = 1.1f;
+    float maxValue = 1023.0f;
+    float measureVoltage = lastVoltageRaw / maxValue * refVoltage;
 
-      //Serial.print("V: "+String(measureVoltage)+" ");
-      // 4.2 volts then corresponds to 0.97 volts measured
-      
-      float voltage = measureVoltage * bridgeFactor;
-  
-      return voltage;
+    //Serial.print("V: "+String(measureVoltage)+" "+String(lastVoltageRaw)+","+String(lastVoltageRaw2)+" ");
+    // 4.2 volts then corresponds to 0.97 volts measured
+    
+    lastReadVoltage = measureVoltage * bridgeFactor;
+
+    return lastReadVoltage;
   }
 };
 
